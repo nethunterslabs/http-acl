@@ -1,0 +1,14 @@
+[package]
+name = "http-acl"
+version = "0.1.0"
+edition = "2021"
+description = "An ACL for HTTP requests."
+license = "Apache-2.0"
+repository = "https://github.com/nethunterslabs/http-acl"
+readme = "README.md"
+categories = ["network-programming", "web-programming::http-client"]
+keywords = ["http", "acl", "ip", "network", "ssrf"]
+
+[dependencies]
+ipnet = "2.8.0"
+url = "2.4.0"
