@@ -106,6 +106,15 @@ impl HttpAcl {
         &self.denied_methods
     }
 
+    /// Returns whether the scheme is allowed.
+    pub fn is_scheme_allowed(&self, scheme: &str) -> AclClassification {
+        if scheme == "http" && self.allow_http || scheme == "https" && self.allow_https {
+            AclClassification::AllowedUserAcl
+        } else {
+            AclClassification::DeniedUserAcl
+        }
+    }
+
     /// Returns whether the method is allowed.
     pub fn is_method_allowed(&self, method: &HttpRequestMethods) -> AclClassification {
         if self.allowed_methods.contains(method) {
