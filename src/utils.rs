@@ -1,2 +1,2 @@
+pub mod authority;
 pub(crate) mod ip;
-pub(crate) mod valid;

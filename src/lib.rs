@@ -2,7 +2,7 @@
 
 pub mod acl;
 pub mod error;
-pub(crate) mod utils;
+pub mod utils;
 
 pub use acl::{HttpAcl, HttpAclBuilder};
 

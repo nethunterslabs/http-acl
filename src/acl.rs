@@ -409,7 +409,7 @@ impl HttpAclBuilder {
 
     /// Sets whether public IP ranges are allowed.
     pub fn add_allowed_host(mut self, host: String) -> Result<Self, AddError> {
-        if utils::valid::is_valid_host(&host) {
+        if utils::authority::is_valid_host(&host) {
             if self.denied_hosts.contains(&host) {
                 Err(AddError::AlreadyDenied)
             } else if self.allowed_hosts.contains(&host) {
@@ -432,7 +432,7 @@ impl HttpAclBuilder {
     /// Sets the allowed hosts.
     pub fn allowed_hosts(mut self, hosts: Vec<String>) -> Result<Self, AddError> {
         for host in &hosts {
-            if utils::valid::is_valid_host(host) {
+            if utils::authority::is_valid_host(host) {
                 if self.denied_hosts.contains(host) {
                     return Err(AddError::AlreadyDenied);
                 } else if self.allowed_hosts.contains(host) {
@@ -454,7 +454,7 @@ impl HttpAclBuilder {
 
     /// Adds a host to the denied hosts.
     pub fn add_denied_host(mut self, host: String) -> Result<Self, AddError> {
-        if utils::valid::is_valid_host(&host) {
+        if utils::authority::is_valid_host(&host) {
             if self.allowed_hosts.contains(&host) {
                 Err(AddError::AlreadyAllowed)
             } else if self.denied_hosts.contains(&host) {
@@ -477,7 +477,7 @@ impl HttpAclBuilder {
     /// Sets the denied hosts.
     pub fn denied_hosts(mut self, hosts: Vec<String>) -> Result<Self, AddError> {
         for host in &hosts {
-            if utils::valid::is_valid_host(host) {
+            if utils::authority::is_valid_host(host) {
                 if self.allowed_hosts.contains(host) {
                     return Err(AddError::AlreadyAllowed);
                 } else if self.denied_hosts.contains(host) {
