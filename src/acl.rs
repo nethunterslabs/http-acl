@@ -407,6 +407,43 @@ impl HttpAclBuilder {
         self
     }
 
+    /// Adds a method to the denied methods.
+    pub fn add_denied_method(mut self, method: HttpRequestMethods) -> Result<Self, AddError> {
+        if self.allowed_methods.contains(&method) {
+            Err(AddError::AlreadyAllowed)
+        } else if self.denied_methods.contains(&method) {
+            Err(AddError::AlreadyDenied)
+        } else {
+            self.denied_methods.push(method);
+            Ok(self)
+        }
+    }
+
+    /// Removes a method from the denied methods.
+    pub fn remove_denied_method(mut self, method: HttpRequestMethods) -> Self {
+        self.denied_methods.retain(|m| m != &method);
+        self
+    }
+
+    /// Sets the denied methods.
+    pub fn denied_methods(mut self, methods: Vec<HttpRequestMethods>) -> Result<Self, AddError> {
+        for method in &methods {
+            if self.allowed_methods.contains(method) {
+                return Err(AddError::AlreadyAllowed);
+            } else if self.denied_methods.contains(method) {
+                return Err(AddError::AlreadyDenied);
+            }
+        }
+        self.denied_methods = methods;
+        Ok(self)
+    }
+
+    /// Clears the denied methods.
+    pub fn clear_denied_methods(mut self) -> Self {
+        self.denied_methods.clear();
+        self
+    }
+
     /// Sets whether public IP ranges are allowed.
     pub fn add_allowed_host(mut self, host: String) -> Result<Self, AddError> {
         if utils::authority::is_valid_host(&host) {
