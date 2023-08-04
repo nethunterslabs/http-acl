@@ -4,7 +4,7 @@ use ipnet::IpNet;
 
 use crate::{error::AddError, utils};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HttpAcl {
     allow_http: bool,
     allow_https: bool,
@@ -271,7 +271,7 @@ pub enum HttpRequestMethods {
 }
 
 /// A builder for [`HttpAcl`](HttpAcl).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HttpAclBuilder {
     allow_http: bool,
     allow_https: bool,
