@@ -37,11 +37,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap()
         .build();
 
-    assert!(acl.is_host_allowed("example.com"));
-    assert!(acl.is_host_allowed("example.org"));
-    assert!(!acl.is_host_allowed("example.net"));
-    assert!(acl.is_port_allowed(8080));
-    assert!(!acl.is_port_allowed(8443));
+    assert!(acl.is_host_allowed("example.com").is_allowed());
+    assert!(acl.is_host_allowed("example.org").is_allowed());
+    assert!(!acl.is_host_allowed("example.net").is_allowed());
+    assert!(acl.is_port_allowed(8080).is_allowed());
+    assert!(!acl.is_port_allowed(8443).is_allowed());
     assert!(acl.is_ip_allowed(&"1.1.1.1".parse().unwrap()).is_allowed());
     assert!(acl.is_ip_allowed(&"9.9.9.9".parse().unwrap()).is_denied());
     assert!(acl

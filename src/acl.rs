@@ -8,6 +8,8 @@ use crate::{error::AddError, utils};
 pub struct HttpAcl {
     allow_http: bool,
     allow_https: bool,
+    allowed_methods: Vec<HttpRequestMethods>,
+    denied_methods: Vec<HttpRequestMethods>,
     allowed_hosts: Vec<String>,
     denied_hosts: Vec<String>,
     allowed_ports: Vec<u16>,
@@ -15,7 +17,10 @@ pub struct HttpAcl {
     allowed_ip_ranges: Vec<IpNet>,
     denied_ip_ranges: Vec<IpNet>,
     allow_private_ip_ranges: bool,
-    allow_ip_default: bool,
+    method_acl_default: bool,
+    host_acl_default: bool,
+    port_acl_default: bool,
+    ip_acl_default: bool,
 }
 
 impl std::default::Default for HttpAcl {
@@ -23,6 +28,18 @@ impl std::default::Default for HttpAcl {
         Self {
             allow_http: true,
             allow_https: true,
+            allowed_methods: vec![
+                HttpRequestMethods::CONNECT,
+                HttpRequestMethods::DELETE,
+                HttpRequestMethods::GET,
+                HttpRequestMethods::HEAD,
+                HttpRequestMethods::OPTIONS,
+                HttpRequestMethods::PATCH,
+                HttpRequestMethods::POST,
+                HttpRequestMethods::PUT,
+                HttpRequestMethods::TRACE,
+            ],
+            denied_methods: Vec::new(),
             allowed_hosts: Vec::new(),
             denied_hosts: Vec::new(),
             allowed_ports: vec![80, 443],
@@ -30,7 +47,10 @@ impl std::default::Default for HttpAcl {
             allowed_ip_ranges: Vec::new(),
             denied_ip_ranges: Vec::new(),
             allow_private_ip_ranges: false,
-            allow_ip_default: true,
+            method_acl_default: false,
+            host_acl_default: false,
+            port_acl_default: false,
+            ip_acl_default: false,
         }
     }
 }
@@ -56,49 +76,95 @@ impl HttpAcl {
         self.allow_private_ip_ranges
     }
 
-    /// Returns whether IP addresses are allowed by default.
-    pub fn allow_ip_default(&self) -> bool {
-        self.allow_ip_default
+    /// Returns the default action for HTTP methods if no ACL match is found.
+    pub fn method_acl_default(&self) -> bool {
+        self.method_acl_default
+    }
+
+    /// Returns the default action for hosts if no ACL match is found.
+    pub fn host_acl_default(&self) -> bool {
+        self.host_acl_default
+    }
+
+    /// Returns the default action for ports if no ACL match is found.
+    pub fn port_acl_default(&self) -> bool {
+        self.port_acl_default
+    }
+
+    /// Returns the default action for IPs if no ACL match is found.
+    pub fn ip_acl_default(&self) -> bool {
+        self.ip_acl_default
+    }
+
+    /// Returns the allowed methods.
+    pub fn allowed_methods(&self) -> &[HttpRequestMethods] {
+        &self.allowed_methods
+    }
+
+    /// Returns the denied methods.
+    pub fn denied_methods(&self) -> &[HttpRequestMethods] {
+        &self.denied_methods
+    }
+
+    /// Returns whether the method is allowed.
+    pub fn is_method_allowed(&self, method: &HttpRequestMethods) -> AclClassification {
+        if self.allowed_methods.contains(method) {
+            AclClassification::AllowedUserAcl
+        } else if self.denied_methods.contains(method) {
+            AclClassification::DeniedUserAcl
+        } else if self.method_acl_default {
+            AclClassification::AllowedDefault
+        } else {
+            AclClassification::DeniedDefault
+        }
     }
 
     /// Returns whether the host is allowed.
-    pub fn is_host_allowed(&self, host: &str) -> bool {
-        if self.denied_hosts.iter().any(|h| h == host) {
-            false
+    pub fn is_host_allowed(&self, host: &str) -> AclClassification {
+        if self.denied_hosts.contains(&host.to_string()) {
+            AclClassification::DeniedUserAcl
+        } else if self.allowed_hosts.contains(&host.to_string()) {
+            AclClassification::AllowedUserAcl
+        } else if self.host_acl_default {
+            AclClassification::AllowedDefault
         } else {
-            self.allowed_hosts.iter().any(|h| h == host)
+            AclClassification::DeniedDefault
         }
     }
 
     /// Returns whether the port is allowed.
-    pub fn is_port_allowed(&self, port: u16) -> bool {
+    pub fn is_port_allowed(&self, port: u16) -> AclClassification {
         if self.denied_ports.contains(&port) {
-            false
+            AclClassification::DeniedUserAcl
+        } else if self.allowed_ports.contains(&port) {
+            AclClassification::AllowedUserAcl
+        } else if self.port_acl_default {
+            AclClassification::AllowedDefault
         } else {
-            self.allowed_ports.contains(&port)
+            AclClassification::DeniedDefault
         }
     }
 
     /// Returns whether an IP is allowed.
-    pub fn is_ip_allowed(&self, ip: &IpAddr) -> IpAclClassification {
+    pub fn is_ip_allowed(&self, ip: &IpAddr) -> AclClassification {
         if (!utils::ip::is_global_ip(ip) || ip.is_loopback()) && !utils::ip::is_private_ip(ip) {
             if Self::is_ip_in_ranges(ip, &self.allowed_ip_ranges) {
-                return IpAclClassification::AllowedUserAcl;
+                return AclClassification::AllowedUserAcl;
             } else {
-                return IpAclClassification::DeniedNotGlobal;
+                return AclClassification::DeniedNotGlobal;
             }
         }
 
         if Self::is_ip_in_ranges(ip, &self.allowed_ip_ranges) {
-            IpAclClassification::AllowedUserAcl
+            AclClassification::AllowedUserAcl
         } else if Self::is_ip_in_ranges(ip, &self.denied_ip_ranges) {
-            IpAclClassification::DeniedUserAcl
+            AclClassification::DeniedUserAcl
         } else if utils::ip::is_private_ip(ip) && !self.allow_private_ip_ranges {
-            IpAclClassification::DeniedPrivateRange
-        } else if self.allow_ip_default {
-            IpAclClassification::AllowedDefault
+            AclClassification::DeniedPrivateRange
+        } else if self.ip_acl_default {
+            AclClassification::AllowedDefault
         } else {
-            IpAclClassification::DeniedDefault
+            AclClassification::DeniedDefault
         }
     }
 
@@ -109,55 +175,61 @@ impl HttpAcl {
 }
 
 /// Represents an IP ACL Classification.
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum IpAclClassification {
-    /// The IP is allowed according to the allowed IP ranges.
+pub enum AclClassification {
+    /// The entiy is allowed according to the allowed ACL.
     AllowedUserAcl,
-    /// The IP is denied according to the denied IP ranges.
-    DeniedUserAcl,
-    /// The IP is denied because it is not global.
-    DeniedNotGlobal,
-    /// The IP is denied because it is in a private range.
-    DeniedPrivateRange,
-    /// The ip is allowed because the default is to allow if no ACL match is found.
+    /// The entity is allowed because the default is to allow if no ACL match is found.
     AllowedDefault,
-    /// The ip is denied because the default is to deny if no ACL match is found.
+    /// The entiy is denied according to the denied ACL.
+    DeniedUserAcl,
+    /// The ip is denied because it is not global.
+    DeniedNotGlobal,
+    /// The ip is denied because it is in a private range.
+    DeniedPrivateRange,
+    /// The entity is denied because the default is to deny if no ACL match is found.
     DeniedDefault,
+    /// The entiy is denied.
+    Denied(String),
 }
 
-impl std::fmt::Display for IpAclClassification {
+impl std::fmt::Display for AclClassification {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IpAclClassification::AllowedUserAcl => {
-                write!(f, "The IP is allowed according to the allowed IP ranges.")
+            AclClassification::AllowedUserAcl => {
+                write!(f, "The entiy is allowed according to the allowed ACL.")
             }
-            IpAclClassification::DeniedUserAcl => {
-                write!(f, "The IP is denied according to the denied IP ranges.")
-            }
-            IpAclClassification::DeniedNotGlobal => {
-                write!(f, "The IP is denied because it is not global.")
-            }
-            IpAclClassification::DeniedPrivateRange => {
-                write!(f, "The IP is denied because it is in a private range.")
-            }
-            IpAclClassification::AllowedDefault => write!(
+            AclClassification::AllowedDefault => write!(
                 f,
-                "The ip is allowed because the default is to allow if no ACL match is found."
+                "The entity is allowed because the default is to allow if no ACL match is found."
             ),
-            IpAclClassification::DeniedDefault => write!(
+            AclClassification::DeniedUserAcl => {
+                write!(f, "The entiy is denied according to the denied ACL.")
+            }
+            AclClassification::DeniedNotGlobal => {
+                write!(f, "The ip is denied because it is not global.")
+            }
+            AclClassification::DeniedPrivateRange => {
+                write!(f, "The ip is denied because it is in a private range.")
+            }
+            AclClassification::DeniedDefault => write!(
                 f,
-                "The ip is denied because the default is to deny if no ACL match is found."
+                "The entity is denied because the default is to deny if no ACL match is found."
             ),
+            AclClassification::Denied(reason) => {
+                write!(f, "The entiy is denied because {}.", reason)
+            }
         }
     }
 }
 
-impl IpAclClassification {
+impl AclClassification {
     /// Returns whether the IP is allowed.
     pub fn is_allowed(&self) -> bool {
         matches!(
             self,
-            IpAclClassification::AllowedUserAcl | IpAclClassification::AllowedDefault
+            AclClassification::AllowedUserAcl | AclClassification::AllowedDefault
         )
     }
 
@@ -165,12 +237,28 @@ impl IpAclClassification {
     pub fn is_denied(&self) -> bool {
         matches!(
             self,
-            IpAclClassification::DeniedUserAcl
-                | IpAclClassification::DeniedNotGlobal
-                | IpAclClassification::DeniedPrivateRange
-                | IpAclClassification::DeniedDefault
+            AclClassification::DeniedUserAcl
+                | AclClassification::Denied(_)
+                | AclClassification::DeniedDefault
+                | AclClassification::DeniedNotGlobal
+                | AclClassification::DeniedPrivateRange
         )
     }
+}
+
+/// Represents an HTTP request method.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum HttpRequestMethods {
+    CONNECT,
+    DELETE,
+    GET,
+    HEAD,
+    OPTIONS,
+    PATCH,
+    POST,
+    PUT,
+    TRACE,
+    OTHER(String),
 }
 
 /// A builder for [`HttpAcl`](HttpAcl).
@@ -178,6 +266,8 @@ impl IpAclClassification {
 pub struct HttpAclBuilder {
     allow_http: bool,
     allow_https: bool,
+    allowed_methods: Vec<HttpRequestMethods>,
+    denied_methods: Vec<HttpRequestMethods>,
     allowed_hosts: Vec<String>,
     denied_hosts: Vec<String>,
     allowed_ports: Vec<u16>,
@@ -185,7 +275,10 @@ pub struct HttpAclBuilder {
     allowed_ip_ranges: Vec<IpNet>,
     denied_ip_ranges: Vec<IpNet>,
     allow_private_ip_ranges: bool,
-    allow_ip_default: bool,
+    method_acl_default: bool,
+    host_acl_default: bool,
+    port_acl_default: bool,
+    ip_acl_default: bool,
 }
 
 impl std::default::Default for HttpAclBuilder {
@@ -193,6 +286,18 @@ impl std::default::Default for HttpAclBuilder {
         Self {
             allow_http: true,
             allow_https: true,
+            allowed_methods: vec![
+                HttpRequestMethods::CONNECT,
+                HttpRequestMethods::DELETE,
+                HttpRequestMethods::GET,
+                HttpRequestMethods::HEAD,
+                HttpRequestMethods::OPTIONS,
+                HttpRequestMethods::PATCH,
+                HttpRequestMethods::POST,
+                HttpRequestMethods::PUT,
+                HttpRequestMethods::TRACE,
+            ],
+            denied_methods: Vec::new(),
             allowed_hosts: Vec::new(),
             denied_hosts: Vec::new(),
             allowed_ports: vec![80, 443],
@@ -200,7 +305,10 @@ impl std::default::Default for HttpAclBuilder {
             allowed_ip_ranges: Vec::new(),
             denied_ip_ranges: Vec::new(),
             allow_private_ip_ranges: false,
-            allow_ip_default: true,
+            method_acl_default: false,
+            host_acl_default: false,
+            port_acl_default: false,
+            ip_acl_default: false,
         }
     }
 }
@@ -217,30 +325,10 @@ impl HttpAclBuilder {
         self
     }
 
-    /// Allows HTTP.
-    pub fn allow_http(self) -> Self {
-        self.http(true)
-    }
-
-    /// Denies HTTP.
-    pub fn deny_http(self) -> Self {
-        self.http(false)
-    }
-
     /// Sets whether HTTPS is allowed.
     pub fn https(mut self, allow: bool) -> Self {
         self.allow_https = allow;
         self
-    }
-
-    /// Allows HTTPS.
-    pub fn allow_https(self) -> Self {
-        self.https(true)
-    }
-
-    /// Denies HTTPS.
-    pub fn deny_https(self) -> Self {
-        self.https(false)
     }
 
     /// Sets whether private IP ranges are allowed.
@@ -249,30 +337,65 @@ impl HttpAclBuilder {
         self
     }
 
-    /// Allows private IP ranges.
-    pub fn allow_private_ip_ranges(self) -> Self {
-        self.private_ip_ranges(true)
-    }
-
-    /// Denies private IP ranges.
-    pub fn deny_private_ip_ranges(self) -> Self {
-        self.private_ip_ranges(false)
-    }
-
-    /// Set default action for IP addresses if no ACL match is found.
-    pub fn ip_default(mut self, allow: bool) -> Self {
-        self.allow_ip_default = allow;
+    /// Set default action for HTTP methods if no ACL match is found.
+    pub fn method_acl_default(mut self, allow: bool) -> Self {
+        self.method_acl_default = allow;
         self
     }
 
-    /// Allows IP addresses by default.
-    pub fn allow_ip_default(self) -> Self {
-        self.ip_default(true)
+    /// Set default action for hosts if no ACL match is found.
+    pub fn host_acl_default(mut self, allow: bool) -> Self {
+        self.host_acl_default = allow;
+        self
     }
 
-    /// Denies IP addresses by default.
-    pub fn deny_ip_default(self) -> Self {
-        self.ip_default(false)
+    /// Set default action for ports if no ACL match is found.
+    pub fn port_acl_default(mut self, allow: bool) -> Self {
+        self.port_acl_default = allow;
+        self
+    }
+
+    /// Set default action for IPs if no ACL match is found.
+    pub fn ip_acl_default(mut self, allow: bool) -> Self {
+        self.ip_acl_default = allow;
+        self
+    }
+
+    /// Adds a method to the allowed methods.
+    pub fn add_allowed_method(mut self, method: HttpRequestMethods) -> Result<Self, AddError> {
+        if self.denied_methods.contains(&method) {
+            Err(AddError::AlreadyDenied)
+        } else if self.allowed_methods.contains(&method) {
+            Err(AddError::AlreadyAllowed)
+        } else {
+            self.allowed_methods.push(method);
+            Ok(self)
+        }
+    }
+
+    /// Removes a method from the allowed methods.
+    pub fn remove_allowed_method(mut self, method: HttpRequestMethods) -> Self {
+        self.allowed_methods.retain(|m| m != &method);
+        self
+    }
+
+    /// Sets the allowed methods.
+    pub fn allowed_methods(mut self, methods: Vec<HttpRequestMethods>) -> Result<Self, AddError> {
+        for method in &methods {
+            if self.denied_methods.contains(method) {
+                return Err(AddError::AlreadyDenied);
+            } else if self.allowed_methods.contains(method) {
+                return Err(AddError::AlreadyAllowed);
+            }
+        }
+        self.allowed_methods = methods;
+        Ok(self)
+    }
+
+    /// Clears the allowed methods.
+    pub fn clear_allowed_methods(mut self) -> Self {
+        self.allowed_methods.clear();
+        self
     }
 
     /// Sets whether public IP ranges are allowed.
@@ -509,6 +632,8 @@ impl HttpAclBuilder {
         HttpAcl {
             allow_http: self.allow_http,
             allow_https: self.allow_https,
+            allowed_methods: self.allowed_methods,
+            denied_methods: self.denied_methods,
             allowed_hosts: self.allowed_hosts,
             denied_hosts: self.denied_hosts,
             allowed_ports: self.allowed_ports,
@@ -516,7 +641,10 @@ impl HttpAclBuilder {
             allowed_ip_ranges: self.allowed_ip_ranges,
             denied_ip_ranges: self.denied_ip_ranges,
             allow_private_ip_ranges: self.allow_private_ip_ranges,
-            allow_ip_default: self.allow_ip_default,
+            method_acl_default: self.method_acl_default,
+            host_acl_default: self.host_acl_default,
+            port_acl_default: self.port_acl_default,
+            ip_acl_default: self.ip_acl_default,
         }
     }
 }

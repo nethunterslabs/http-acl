@@ -30,11 +30,11 @@ mod tests {
             .unwrap()
             .build();
 
-        assert!(acl.is_host_allowed("example.com"));
-        assert!(acl.is_host_allowed("example.org"));
-        assert!(!acl.is_host_allowed("example.net"));
-        assert!(acl.is_port_allowed(8080));
-        assert!(!acl.is_port_allowed(8443));
+        assert!(acl.is_host_allowed("example.com").is_allowed());
+        assert!(acl.is_host_allowed("example.org").is_allowed());
+        assert!(!acl.is_host_allowed("example.net").is_allowed());
+        assert!(acl.is_port_allowed(8080).is_allowed());
+        assert!(!acl.is_port_allowed(8443).is_allowed());
         assert!(acl.is_ip_allowed(&"1.1.1.1".parse().unwrap()).is_allowed());
         assert!(acl.is_ip_allowed(&"9.9.9.9".parse().unwrap()).is_denied());
         assert!(acl
@@ -53,9 +53,9 @@ mod tests {
             .unwrap()
             .build();
 
-        assert!(acl.is_host_allowed("example.com"));
-        assert!(acl.is_host_allowed("example.org"));
-        assert!(!acl.is_host_allowed("example.net"));
+        assert!(acl.is_host_allowed("example.com").is_allowed());
+        assert!(acl.is_host_allowed("example.org").is_allowed());
+        assert!(!acl.is_host_allowed("example.net").is_allowed());
     }
 
     #[test]
@@ -68,8 +68,8 @@ mod tests {
             .unwrap()
             .build();
 
-        assert!(acl.is_port_allowed(8080));
-        assert!(!acl.is_port_allowed(8443));
+        assert!(acl.is_port_allowed(8080).is_allowed());
+        assert!(!acl.is_port_allowed(8443).is_allowed());
     }
 
     #[test]
@@ -91,7 +91,10 @@ mod tests {
 
     #[test]
     fn private_ip_acl() {
-        let acl = HttpAclBuilder::new().allow_private_ip_ranges().build();
+        let acl = HttpAclBuilder::new()
+            .private_ip_ranges(true)
+            .ip_acl_default(true)
+            .build();
 
         assert!(acl
             .is_ip_allowed(&"192.168.1.1".parse().unwrap())
@@ -100,11 +103,11 @@ mod tests {
 
     #[test]
     fn default_ip_acl() {
-        let acl = HttpAclBuilder::new().deny_ip_default().build();
+        let acl = HttpAclBuilder::new().build();
 
         assert!(acl
             .is_ip_allowed(&"192.168.1.1".parse().unwrap())
             .is_denied());
-        assert!(!acl.is_port_allowed(8080));
+        assert!(!acl.is_port_allowed(8080).is_allowed());
     }
 }
