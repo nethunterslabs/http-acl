@@ -8,8 +8,8 @@ use crate::{error::AddError, utils};
 pub struct HttpAcl {
     allow_http: bool,
     allow_https: bool,
-    allowed_methods: Vec<HttpRequestMethods>,
-    denied_methods: Vec<HttpRequestMethods>,
+    allowed_methods: Vec<HttpRequestMethod>,
+    denied_methods: Vec<HttpRequestMethod>,
     allowed_hosts: Vec<String>,
     denied_hosts: Vec<String>,
     allowed_ports: Vec<u16>,
@@ -29,15 +29,15 @@ impl std::default::Default for HttpAcl {
             allow_http: true,
             allow_https: true,
             allowed_methods: vec![
-                HttpRequestMethods::CONNECT,
-                HttpRequestMethods::DELETE,
-                HttpRequestMethods::GET,
-                HttpRequestMethods::HEAD,
-                HttpRequestMethods::OPTIONS,
-                HttpRequestMethods::PATCH,
-                HttpRequestMethods::POST,
-                HttpRequestMethods::PUT,
-                HttpRequestMethods::TRACE,
+                HttpRequestMethod::CONNECT,
+                HttpRequestMethod::DELETE,
+                HttpRequestMethod::GET,
+                HttpRequestMethod::HEAD,
+                HttpRequestMethod::OPTIONS,
+                HttpRequestMethod::PATCH,
+                HttpRequestMethod::POST,
+                HttpRequestMethod::PUT,
+                HttpRequestMethod::TRACE,
             ],
             denied_methods: Vec::new(),
             allowed_hosts: Vec::new(),
@@ -97,12 +97,12 @@ impl HttpAcl {
     }
 
     /// Returns the allowed methods.
-    pub fn allowed_methods(&self) -> &[HttpRequestMethods] {
+    pub fn allowed_methods(&self) -> &[HttpRequestMethod] {
         &self.allowed_methods
     }
 
     /// Returns the denied methods.
-    pub fn denied_methods(&self) -> &[HttpRequestMethods] {
+    pub fn denied_methods(&self) -> &[HttpRequestMethod] {
         &self.denied_methods
     }
 
@@ -116,10 +116,11 @@ impl HttpAcl {
     }
 
     /// Returns whether the method is allowed.
-    pub fn is_method_allowed(&self, method: &HttpRequestMethods) -> AclClassification {
-        if self.allowed_methods.contains(method) {
+    pub fn is_method_allowed(&self, method: impl Into<HttpRequestMethod>) -> AclClassification {
+        let method = method.into();
+        if self.allowed_methods.contains(&method) {
             AclClassification::AllowedUserAcl
-        } else if self.denied_methods.contains(method) {
+        } else if self.denied_methods.contains(&method) {
             AclClassification::DeniedUserAcl
         } else if self.method_acl_default {
             AclClassification::AllowedDefault
@@ -183,7 +184,7 @@ impl HttpAcl {
     }
 }
 
-/// Represents an IP ACL Classification.
+/// Represents an ACL Classification.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum AclClassification {
@@ -193,14 +194,14 @@ pub enum AclClassification {
     AllowedDefault,
     /// The entiy is denied according to the denied ACL.
     DeniedUserAcl,
-    /// The ip is denied because it is not global.
-    DeniedNotGlobal,
-    /// The ip is denied because it is in a private range.
-    DeniedPrivateRange,
     /// The entity is denied because the default is to deny if no ACL match is found.
     DeniedDefault,
     /// The entiy is denied.
     Denied(String),
+    /// The IP is denied because it is not global.
+    DeniedNotGlobal,
+    /// The IP is denied because it is in a private range.
+    DeniedPrivateRange,
 }
 
 impl std::fmt::Display for AclClassification {
@@ -234,7 +235,7 @@ impl std::fmt::Display for AclClassification {
 }
 
 impl AclClassification {
-    /// Returns whether the IP is allowed.
+    /// Returns whether the classification is allowed.
     pub fn is_allowed(&self) -> bool {
         matches!(
             self,
@@ -242,7 +243,7 @@ impl AclClassification {
         )
     }
 
-    /// Returns whether the IP is denied.
+    /// Returns whether the classification is denied.
     pub fn is_denied(&self) -> bool {
         matches!(
             self,
@@ -257,7 +258,7 @@ impl AclClassification {
 
 /// Represents an HTTP request method.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum HttpRequestMethods {
+pub enum HttpRequestMethod {
     CONNECT,
     DELETE,
     GET,
@@ -270,13 +271,30 @@ pub enum HttpRequestMethods {
     OTHER(String),
 }
 
+impl From<&str> for HttpRequestMethod {
+    fn from(method: &str) -> Self {
+        match method {
+            "CONNECT" => HttpRequestMethod::CONNECT,
+            "DELETE" => HttpRequestMethod::DELETE,
+            "GET" => HttpRequestMethod::GET,
+            "HEAD" => HttpRequestMethod::HEAD,
+            "OPTIONS" => HttpRequestMethod::OPTIONS,
+            "PATCH" => HttpRequestMethod::PATCH,
+            "POST" => HttpRequestMethod::POST,
+            "PUT" => HttpRequestMethod::PUT,
+            "TRACE" => HttpRequestMethod::TRACE,
+            _ => HttpRequestMethod::OTHER(method.to_string()),
+        }
+    }
+}
+
 /// A builder for [`HttpAcl`](HttpAcl).
 #[derive(Debug, Clone)]
 pub struct HttpAclBuilder {
     allow_http: bool,
     allow_https: bool,
-    allowed_methods: Vec<HttpRequestMethods>,
-    denied_methods: Vec<HttpRequestMethods>,
+    allowed_methods: Vec<HttpRequestMethod>,
+    denied_methods: Vec<HttpRequestMethod>,
     allowed_hosts: Vec<String>,
     denied_hosts: Vec<String>,
     allowed_ports: Vec<u16>,
@@ -296,15 +314,15 @@ impl std::default::Default for HttpAclBuilder {
             allow_http: true,
             allow_https: true,
             allowed_methods: vec![
-                HttpRequestMethods::CONNECT,
-                HttpRequestMethods::DELETE,
-                HttpRequestMethods::GET,
-                HttpRequestMethods::HEAD,
-                HttpRequestMethods::OPTIONS,
-                HttpRequestMethods::PATCH,
-                HttpRequestMethods::POST,
-                HttpRequestMethods::PUT,
-                HttpRequestMethods::TRACE,
+                HttpRequestMethod::CONNECT,
+                HttpRequestMethod::DELETE,
+                HttpRequestMethod::GET,
+                HttpRequestMethod::HEAD,
+                HttpRequestMethod::OPTIONS,
+                HttpRequestMethod::PATCH,
+                HttpRequestMethod::POST,
+                HttpRequestMethod::PUT,
+                HttpRequestMethod::TRACE,
             ],
             denied_methods: Vec::new(),
             allowed_hosts: Vec::new(),
@@ -371,7 +389,11 @@ impl HttpAclBuilder {
     }
 
     /// Adds a method to the allowed methods.
-    pub fn add_allowed_method(mut self, method: HttpRequestMethods) -> Result<Self, AddError> {
+    pub fn add_allowed_method(
+        mut self,
+        method: impl Into<HttpRequestMethod>,
+    ) -> Result<Self, AddError> {
+        let method = method.into();
         if self.denied_methods.contains(&method) {
             Err(AddError::AlreadyDenied)
         } else if self.allowed_methods.contains(&method) {
@@ -383,13 +405,19 @@ impl HttpAclBuilder {
     }
 
     /// Removes a method from the allowed methods.
-    pub fn remove_allowed_method(mut self, method: HttpRequestMethods) -> Self {
+    pub fn remove_allowed_method(mut self, method: impl Into<HttpRequestMethod>) -> Self {
+        let method = method.into();
         self.allowed_methods.retain(|m| m != &method);
         self
     }
 
     /// Sets the allowed methods.
-    pub fn allowed_methods(mut self, methods: Vec<HttpRequestMethods>) -> Result<Self, AddError> {
+    pub fn allowed_methods(
+        mut self,
+        methods: Vec<impl Into<HttpRequestMethod>>,
+    ) -> Result<Self, AddError> {
+        let methods = methods.into_iter().map(|m| m.into()).collect::<Vec<_>>();
+
         for method in &methods {
             if self.denied_methods.contains(method) {
                 return Err(AddError::AlreadyDenied);
@@ -408,7 +436,11 @@ impl HttpAclBuilder {
     }
 
     /// Adds a method to the denied methods.
-    pub fn add_denied_method(mut self, method: HttpRequestMethods) -> Result<Self, AddError> {
+    pub fn add_denied_method(
+        mut self,
+        method: impl Into<HttpRequestMethod>,
+    ) -> Result<Self, AddError> {
+        let method = method.into();
         if self.allowed_methods.contains(&method) {
             Err(AddError::AlreadyAllowed)
         } else if self.denied_methods.contains(&method) {
@@ -420,13 +452,19 @@ impl HttpAclBuilder {
     }
 
     /// Removes a method from the denied methods.
-    pub fn remove_denied_method(mut self, method: HttpRequestMethods) -> Self {
+    pub fn remove_denied_method(mut self, method: impl Into<HttpRequestMethod>) -> Self {
+        let method = method.into();
         self.denied_methods.retain(|m| m != &method);
         self
     }
 
     /// Sets the denied methods.
-    pub fn denied_methods(mut self, methods: Vec<HttpRequestMethods>) -> Result<Self, AddError> {
+    pub fn denied_methods(
+        mut self,
+        methods: Vec<impl Into<HttpRequestMethod>>,
+    ) -> Result<Self, AddError> {
+        let methods = methods.into_iter().map(|m| m.into()).collect::<Vec<_>>();
+
         for method in &methods {
             if self.allowed_methods.contains(method) {
                 return Err(AddError::AlreadyAllowed);

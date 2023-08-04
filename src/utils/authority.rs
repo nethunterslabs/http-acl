@@ -12,6 +12,16 @@ pub struct Authority {
     pub port: u16,
 }
 
+impl std::fmt::Display for Authority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.port == 0 {
+            write!(f, "{}", self.host)
+        } else {
+            write!(f, "{}:{}", self.host, self.port)
+        }
+    }
+}
+
 /// Represents a parsed host.
 #[derive(Debug, Clone)]
 pub enum Host {
@@ -19,9 +29,29 @@ pub enum Host {
     Ip(std::net::IpAddr),
 }
 
+impl std::fmt::Display for Host {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Host::Domain(domain) => write!(f, "{}", domain),
+            Host::Ip(ip) => match ip {
+                std::net::IpAddr::V4(ip) => write!(f, "{}", ip),
+                std::net::IpAddr::V6(ip) => write!(f, "[{}]", ip),
+            },
+        }
+    }
+}
+
 #[non_exhaustive]
 pub enum AuthorityError {
     InvalidHost,
+}
+
+impl std::fmt::Display for AuthorityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthorityError::InvalidHost => write!(f, "invalid host"),
+        }
+    }
 }
 
 impl Authority {
