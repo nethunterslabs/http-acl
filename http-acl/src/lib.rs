@@ -1,5 +1,7 @@
 #![doc = include_str!("../README.md")]
 
+pub use ipnet::IpNet;
+
 pub mod acl;
 pub mod error;
 pub mod utils;
@@ -20,9 +22,9 @@ mod tests {
             .unwrap()
             .add_denied_host("example.net".to_string())
             .unwrap()
-            .add_allowed_port(8080)
+            .add_allowed_port_range(8080..=8080)
             .unwrap()
-            .add_denied_port(8443)
+            .add_denied_port_range(8443..=8443)
             .unwrap()
             .add_allowed_ip_range("1.0.0.0/8".parse::<IpNet>().unwrap())
             .unwrap()
@@ -61,10 +63,10 @@ mod tests {
     #[test]
     fn port_acl() {
         let acl = HttpAclBuilder::new()
-            .clear_allowed_ports()
-            .add_allowed_port(8080)
+            .clear_allowed_port_ranges()
+            .add_allowed_port_range(8080..=8080)
             .unwrap()
-            .add_denied_port(8443)
+            .add_denied_port_range(8443..=8443)
             .unwrap()
             .build();
 

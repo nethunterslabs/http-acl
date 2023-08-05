@@ -1,4 +1,5 @@
 use std::net::IpAddr;
+use std::ops::RangeInclusive;
 
 use ipnet::IpNet;
 
@@ -12,8 +13,8 @@ pub struct HttpAcl {
     denied_methods: Vec<HttpRequestMethod>,
     allowed_hosts: Vec<String>,
     denied_hosts: Vec<String>,
-    allowed_ports: Vec<u16>,
-    denied_ports: Vec<u16>,
+    allowed_port_ranges: Vec<RangeInclusive<u16>>,
+    denied_port_ranges: Vec<RangeInclusive<u16>>,
     allowed_ip_ranges: Vec<IpNet>,
     denied_ip_ranges: Vec<IpNet>,
     allow_private_ip_ranges: bool,
@@ -42,8 +43,8 @@ impl std::default::Default for HttpAcl {
             denied_methods: Vec::new(),
             allowed_hosts: Vec::new(),
             denied_hosts: Vec::new(),
-            allowed_ports: vec![80, 443],
-            denied_ports: Vec::new(),
+            allowed_port_ranges: vec![80..=80, 443..=443],
+            denied_port_ranges: Vec::new(),
             allowed_ip_ranges: Vec::new(),
             denied_ip_ranges: Vec::new(),
             allow_private_ip_ranges: false,
@@ -58,7 +59,7 @@ impl std::default::Default for HttpAcl {
 impl HttpAcl {
     /// Returns a new [`HttpAclBuilder`](HttpAclBuilder).
     pub fn builder() -> HttpAclBuilder {
-        HttpAclBuilder::default()
+        HttpAclBuilder::new()
     }
 
     /// Returns whether HTTP is allowed.
@@ -144,9 +145,9 @@ impl HttpAcl {
 
     /// Returns whether the port is allowed.
     pub fn is_port_allowed(&self, port: u16) -> AclClassification {
-        if self.denied_ports.contains(&port) {
+        if Self::is_port_in_ranges(port, &self.denied_port_ranges) {
             AclClassification::DeniedUserAcl
-        } else if self.allowed_ports.contains(&port) {
+        } else if Self::is_port_in_ranges(port, &self.allowed_port_ranges) {
             AclClassification::AllowedUserAcl
         } else if self.port_acl_default {
             AclClassification::AllowedDefault
@@ -181,6 +182,11 @@ impl HttpAcl {
     /// Checks if an ip is in a list of ip ranges.
     fn is_ip_in_ranges(ip: &IpAddr, ranges: &[IpNet]) -> bool {
         ranges.iter().any(|range| range.contains(ip))
+    }
+
+    /// Checks if a port is in a list of port ranges.
+    fn is_port_in_ranges(port: u16, ranges: &[RangeInclusive<u16>]) -> bool {
+        ranges.iter().any(|range| range.contains(&port))
     }
 }
 
@@ -289,7 +295,7 @@ impl From<&str> for HttpRequestMethod {
 }
 
 /// A builder for [`HttpAcl`](HttpAcl).
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct HttpAclBuilder {
     allow_http: bool,
     allow_https: bool,
@@ -297,8 +303,8 @@ pub struct HttpAclBuilder {
     denied_methods: Vec<HttpRequestMethod>,
     allowed_hosts: Vec<String>,
     denied_hosts: Vec<String>,
-    allowed_ports: Vec<u16>,
-    denied_ports: Vec<u16>,
+    allowed_port_ranges: Vec<RangeInclusive<u16>>,
+    denied_port_ranges: Vec<RangeInclusive<u16>>,
     allowed_ip_ranges: Vec<IpNet>,
     denied_ip_ranges: Vec<IpNet>,
     allow_private_ip_ranges: bool,
@@ -308,8 +314,9 @@ pub struct HttpAclBuilder {
     ip_acl_default: bool,
 }
 
-impl std::default::Default for HttpAclBuilder {
-    fn default() -> Self {
+impl HttpAclBuilder {
+    /// Create a new [`HttpAclBuilder`](HttpAclBuilder).
+    pub fn new() -> Self {
         Self {
             allow_http: true,
             allow_https: true,
@@ -327,8 +334,8 @@ impl std::default::Default for HttpAclBuilder {
             denied_methods: Vec::new(),
             allowed_hosts: Vec::new(),
             denied_hosts: Vec::new(),
-            allowed_ports: vec![80, 443],
-            denied_ports: Vec::new(),
+            allowed_port_ranges: vec![80..=80, 443..=443],
+            denied_port_ranges: Vec::new(),
             allowed_ip_ranges: Vec::new(),
             denied_ip_ranges: Vec::new(),
             allow_private_ip_ranges: false,
@@ -337,13 +344,6 @@ impl std::default::Default for HttpAclBuilder {
             port_acl_default: false,
             ip_acl_default: false,
         }
-    }
-}
-
-impl HttpAclBuilder {
-    /// Create a new [`HttpAclBuilder`](HttpAclBuilder).
-    pub fn new() -> Self {
-        Self::default()
     }
 
     /// Sets whether HTTP is allowed.
@@ -572,77 +572,89 @@ impl HttpAclBuilder {
         self
     }
 
-    /// Adds a port to the allowed ports.
-    pub fn add_allowed_port(mut self, port: u16) -> Result<Self, AddError> {
-        if self.denied_ports.contains(&port) {
+    /// Adds a port range to the allowed port ranges.
+    pub fn add_allowed_port_range(
+        mut self,
+        port_range: RangeInclusive<u16>,
+    ) -> Result<Self, AddError> {
+        if self.denied_port_ranges.contains(&port_range) {
             Err(AddError::AlreadyDenied)
-        } else if self.allowed_ports.contains(&port) {
+        } else if self.allowed_port_ranges.contains(&port_range) {
             Err(AddError::AlreadyAllowed)
         } else {
-            self.allowed_ports.push(port);
+            self.allowed_port_ranges.push(port_range);
             Ok(self)
         }
     }
 
-    /// Removes a port from the allowed ports.
-    pub fn remove_allowed_port(mut self, port: u16) -> Self {
-        self.allowed_ports.retain(|p| p != &port);
+    /// Removes a port range from the allowed port ranges.
+    pub fn remove_allowed_port_range(mut self, port_range: RangeInclusive<u16>) -> Self {
+        self.allowed_port_ranges.retain(|p| p != &port_range);
         self
     }
 
-    /// Sets the allowed ports.
-    pub fn allowed_ports(mut self, ports: Vec<u16>) -> Result<Self, AddError> {
-        for port in &ports {
-            if self.denied_ports.contains(port) {
+    /// Sets the allowed port ranges.
+    pub fn allowed_port_ranges(
+        mut self,
+        port_ranges: Vec<RangeInclusive<u16>>,
+    ) -> Result<Self, AddError> {
+        for port_range in &port_ranges {
+            if self.denied_port_ranges.contains(port_range) {
                 return Err(AddError::AlreadyDenied);
-            } else if self.allowed_ports.contains(port) {
+            } else if self.allowed_port_ranges.contains(port_range) {
                 return Err(AddError::AlreadyAllowed);
             }
         }
-        self.allowed_ports = ports;
+        self.allowed_port_ranges = port_ranges;
         Ok(self)
     }
 
-    /// Clears the allowed ports.
-    pub fn clear_allowed_ports(mut self) -> Self {
-        self.allowed_ports.clear();
+    /// Clears the allowed port ranges.
+    pub fn clear_allowed_port_ranges(mut self) -> Self {
+        self.allowed_port_ranges.clear();
         self
     }
 
-    /// Adds a port to the denied ports.
-    pub fn add_denied_port(mut self, port: u16) -> Result<Self, AddError> {
-        if self.allowed_ports.contains(&port) {
+    /// Adds a port range to the denied port ranges.
+    pub fn add_denied_port_range(
+        mut self,
+        port_range: RangeInclusive<u16>,
+    ) -> Result<Self, AddError> {
+        if self.allowed_port_ranges.contains(&port_range) {
             Err(AddError::AlreadyAllowed)
-        } else if self.denied_ports.contains(&port) {
+        } else if self.denied_port_ranges.contains(&port_range) {
             Err(AddError::AlreadyDenied)
         } else {
-            self.denied_ports.push(port);
+            self.denied_port_ranges.push(port_range);
             Ok(self)
         }
     }
 
-    /// Removes a port from the denied ports.
-    pub fn remove_denied_port(mut self, port: u16) -> Self {
-        self.denied_ports.retain(|p| p != &port);
+    /// Removes a port range from the denied port ranges.
+    pub fn remove_denied_port_range(mut self, port_range: RangeInclusive<u16>) -> Self {
+        self.denied_port_ranges.retain(|p| p != &port_range);
         self
     }
 
-    /// Sets the denied ports.
-    pub fn denied_ports(mut self, ports: Vec<u16>) -> Result<Self, AddError> {
-        for port in &ports {
-            if self.allowed_ports.contains(port) {
+    /// Sets the denied port ranges.
+    pub fn denied_port_ranges(
+        mut self,
+        port_ranges: Vec<RangeInclusive<u16>>,
+    ) -> Result<Self, AddError> {
+        for port_range in &port_ranges {
+            if self.allowed_port_ranges.contains(port_range) {
                 return Err(AddError::AlreadyAllowed);
-            } else if self.denied_ports.contains(port) {
+            } else if self.denied_port_ranges.contains(port_range) {
                 return Err(AddError::AlreadyDenied);
             }
         }
-        self.denied_ports = ports;
+        self.denied_port_ranges = port_ranges;
         Ok(self)
     }
 
-    /// Clears the denied ports.
-    pub fn clear_denied_ports(mut self) -> Self {
-        self.denied_ports.clear();
+    /// Clears the denied port ranges.
+    pub fn clear_denied_port_ranges(mut self) -> Self {
+        self.denied_port_ranges.clear();
         self
     }
 
@@ -720,8 +732,8 @@ impl HttpAclBuilder {
             denied_methods: self.denied_methods,
             allowed_hosts: self.allowed_hosts,
             denied_hosts: self.denied_hosts,
-            allowed_ports: self.allowed_ports,
-            denied_ports: self.denied_ports,
+            allowed_port_ranges: self.allowed_port_ranges,
+            denied_port_ranges: self.denied_port_ranges,
             allowed_ip_ranges: self.allowed_ip_ranges,
             denied_ip_ranges: self.denied_ip_ranges,
             allow_private_ip_ranges: self.allow_private_ip_ranges,

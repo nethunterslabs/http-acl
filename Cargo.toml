@@ -1,14 +1,11 @@
-[package]
-name = "http-acl"
-version = "0.4.1"
+[workspace]
+members = ["http-acl", "http-acl-reqwest"]
+
+[workspace.package]
+version = "0.5.0"
 edition = "2021"
-description = "An ACL for HTTP requests."
 license = "Apache-2.0"
 repository = "https://github.com/nethunterslabs/http-acl"
 readme = "README.md"
 categories = ["network-programming", "web-programming::http-client"]
 keywords = ["http", "acl", "ip", "network", "ssrf"]
-
-[dependencies]
-ipnet = "2.8.0"
-url = "2.4.0"
