@@ -11,10 +11,10 @@ This crate provides a simple ACL to allow you to specify which hosts, ports, and
 ## Usage
 
 ```rust
-use http_acl::HttpAcl;
+use http_acl::{HttpAcl, IpNet};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let acl = HttpAclBuilder::new()
+    let acl = HttpAcl::builder()
         .add_allowed_host("example.com".to_string())
         .unwrap()
         .add_allowed_host("example.org".to_string())
