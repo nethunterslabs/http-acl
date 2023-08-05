@@ -1,11 +1,11 @@
 [package]
 name = "http-acl-reqwest"
 description = "An ACL middleware for reqwest."
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-readme.workspace = true
 categories.workspace = true
 keywords.workspace = true
 

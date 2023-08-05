@@ -1,11 +1,11 @@
 [package]
 name = "http-acl"
 description = "An ACL for HTTP requests."
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-readme.workspace = true
 categories.workspace = true
 keywords.workspace = true
 
