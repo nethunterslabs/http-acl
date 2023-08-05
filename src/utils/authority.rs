@@ -6,7 +6,7 @@ pub fn is_valid_host(host: &str) -> bool {
 }
 
 /// Represents a parsed authority.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Authority {
     pub host: Host,
     pub port: u16,
@@ -23,7 +23,7 @@ impl std::fmt::Display for Authority {
 }
 
 /// Represents a parsed host.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Host {
     Domain(String),
     Ip(std::net::IpAddr),
@@ -42,6 +42,7 @@ impl std::fmt::Display for Host {
 }
 
 #[non_exhaustive]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum AuthorityError {
     InvalidHost,
 }
@@ -71,11 +72,115 @@ impl Authority {
             });
         }
 
-        let host = url::Host::parse(authority).map_err(|_| AuthorityError::InvalidHost)?;
+        match url::Host::parse(authority) {
+            Ok(url::Host::Domain(domain)) => Ok(Self {
+                host: Host::Domain(domain),
+                port: 0,
+            }),
+            Ok(url::Host::Ipv4(ip)) => Ok(Self {
+                host: Host::Ip(ip.into()),
+                port: 0,
+            }),
+            Ok(url::Host::Ipv6(ip)) => Ok(Self {
+                host: Host::Ip(ip.into()),
+                port: 0,
+            }),
+            Err(_) => {
+                if let Some((domain, port)) = authority.split_once(':') {
+                    if let Ok(port) = port.parse::<u16>() {
+                        url::Host::parse(domain).map_err(|_| AuthorityError::InvalidHost)?;
 
-        Ok(Self {
-            host: Host::Domain(host.to_string()),
-            port: 0,
-        })
+                        return Ok(Self {
+                            host: Host::Domain(domain.to_string()),
+                            port,
+                        });
+                    }
+                }
+
+                Err(AuthorityError::InvalidHost)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn test_is_valid_host() {
+        assert!(is_valid_host("localhost"));
+        assert!(is_valid_host("example.com"));
+        assert!(is_valid_host("127.0.0.1"));
+        assert!(is_valid_host("::1"));
+        assert!(is_valid_host("[::1]"));
+    }
+
+    #[test]
+    fn test_authority_parse() {
+        assert_eq!(
+            Authority::parse("localhost").unwrap(),
+            Authority {
+                host: Host::Domain("localhost".to_string()),
+                port: 0
+            }
+        );
+        assert_eq!(
+            Authority::parse("localhost:5000").unwrap(),
+            Authority {
+                host: Host::Domain("localhost".to_string()),
+                port: 5000
+            }
+        );
+        assert_eq!(
+            Authority::parse("example.com").unwrap(),
+            Authority {
+                host: Host::Domain("example.com".to_string()),
+                port: 0
+            }
+        );
+        assert_eq!(
+            Authority::parse("example.com:443").unwrap(),
+            Authority {
+                host: Host::Domain("example.com".to_string()),
+                port: 443
+            }
+        );
+        assert_eq!(
+            Authority::parse("127.0.0.1").unwrap(),
+            Authority {
+                host: Host::Ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+                port: 0
+            }
+        );
+        assert_eq!(
+            Authority::parse("127.0.0.1:80").unwrap(),
+            Authority {
+                host: Host::Ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+                port: 80
+            }
+        );
+        assert_eq!(
+            Authority::parse("::1").unwrap(),
+            Authority {
+                host: Host::Ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1))),
+                port: 0
+            }
+        );
+        assert_eq!(
+            Authority::parse("[::1]").unwrap(),
+            Authority {
+                host: Host::Ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1))),
+                port: 0
+            }
+        );
+        assert_eq!(
+            Authority::parse("[::1]:80").unwrap(),
+            Authority {
+                host: Host::Ip(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1))),
+                port: 80
+            }
+        );
     }
 }
