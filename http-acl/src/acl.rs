@@ -2,10 +2,13 @@ use std::net::IpAddr;
 use std::ops::RangeInclusive;
 
 use ipnet::IpNet;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 use crate::{error::AddError, utils};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct HttpAcl {
     allow_http: bool,
     allow_https: bool,
@@ -264,6 +267,7 @@ impl AclClassification {
 
 /// Represents an HTTP request method.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum HttpRequestMethod {
     CONNECT,
     DELETE,
@@ -295,7 +299,8 @@ impl From<&str> for HttpRequestMethod {
 }
 
 /// A builder for [`HttpAcl`](HttpAcl).
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct HttpAclBuilder {
     allow_http: bool,
     allow_https: bool,
@@ -742,5 +747,51 @@ impl HttpAclBuilder {
             port_acl_default: self.port_acl_default,
             ip_acl_default: self.ip_acl_default,
         }
+    }
+
+    /// Builds the [`HttpAcl`](HttpAcl) and returns an error if the configuration is invalid.
+    /// This can be used as a validity check for deserialized ACLs that were genrated externally.
+    pub fn try_build(self) -> Result<HttpAcl, AddError> {
+        for method in &self.allowed_methods {
+            if self.denied_methods.contains(method) {
+                return Err(AddError::AlreadyDenied);
+            }
+        }
+        for method in &self.denied_methods {
+            if self.allowed_methods.contains(method) {
+                return Err(AddError::AlreadyAllowed);
+            }
+        }
+        for host in &self.allowed_hosts {
+            if self.denied_hosts.contains(host) {
+                return Err(AddError::AlreadyDenied);
+            }
+        }
+        for host in &self.denied_hosts {
+            if self.allowed_hosts.contains(host) {
+                return Err(AddError::AlreadyAllowed);
+            }
+        }
+        for port_range in &self.allowed_port_ranges {
+            if self.denied_port_ranges.contains(port_range) {
+                return Err(AddError::AlreadyDenied);
+            }
+        }
+        for port_range in &self.denied_port_ranges {
+            if self.allowed_port_ranges.contains(port_range) {
+                return Err(AddError::AlreadyAllowed);
+            }
+        }
+        for ip_range in &self.allowed_ip_ranges {
+            if self.denied_ip_ranges.contains(ip_range) {
+                return Err(AddError::AlreadyDenied);
+            }
+        }
+        for ip_range in &self.denied_ip_ranges {
+            if self.allowed_ip_ranges.contains(ip_range) {
+                return Err(AddError::AlreadyAllowed);
+            }
+        }
+        Ok(self.build())
     }
 }
