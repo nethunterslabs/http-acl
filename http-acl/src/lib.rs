@@ -110,6 +110,7 @@ mod tests {
         assert!(acl
             .is_ip_allowed(&"192.168.1.1".parse().unwrap())
             .is_denied());
+        assert!(acl.is_ip_allowed(&"1.1.1.1".parse().unwrap()).is_denied());
         assert!(!acl.is_port_allowed(8080).is_allowed());
     }
 }

@@ -681,9 +681,16 @@ impl HttpAclBuilder {
     }
 
     /// Sets the allowed IP ranges.
-    pub fn allowed_ip_ranges(mut self, ip_ranges: Vec<IpNet>) -> Self {
+    pub fn allowed_ip_ranges(mut self, ip_ranges: Vec<IpNet>) -> Result<Self, AddError> {
+        for ip_range in &ip_ranges {
+            if self.denied_ip_ranges.contains(ip_range) {
+                return Err(AddError::AlreadyDenied);
+            } else if self.allowed_ip_ranges.contains(ip_range) {
+                return Err(AddError::AlreadyAllowed);
+            }
+        }
         self.allowed_ip_ranges = ip_ranges;
-        self
+        Ok(self)
     }
 
     /// Clears the allowed IP ranges.
