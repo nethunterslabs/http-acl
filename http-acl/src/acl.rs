@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeInclusive;
 
 use ipnet::IpNet;
@@ -22,7 +22,7 @@ pub struct HttpAcl {
     allowed_ip_ranges: Vec<IpNet>,
     denied_ip_ranges: Vec<IpNet>,
     allow_private_ip_ranges: bool,
-    static_dns_mapping: HashMap<String, IpAddr>,
+    static_dns_mapping: HashMap<String, SocketAddr>,
     method_acl_default: bool,
     host_acl_default: bool,
     port_acl_default: bool,
@@ -186,7 +186,7 @@ impl HttpAcl {
     }
 
     /// Resolve static DNS mapping.
-    pub fn resolve_static_dns_mapping(&self, host: &str) -> Option<IpAddr> {
+    pub fn resolve_static_dns_mapping(&self, host: &str) -> Option<SocketAddr> {
         self.static_dns_mapping.get(host).copied()
     }
 
@@ -321,7 +321,7 @@ pub struct HttpAclBuilder {
     allowed_ip_ranges: Vec<IpNet>,
     denied_ip_ranges: Vec<IpNet>,
     allow_private_ip_ranges: bool,
-    static_dns_mapping: HashMap<String, IpAddr>,
+    static_dns_mapping: HashMap<String, SocketAddr>,
     method_acl_default: bool,
     host_acl_default: bool,
     port_acl_default: bool,
@@ -746,9 +746,13 @@ impl HttpAclBuilder {
     }
 
     /// Add a static DNS mapping.
-    pub fn add_static_dns_mapping(mut self, host: String, ip: IpAddr) -> Result<Self, AddError> {
+    pub fn add_static_dns_mapping(
+        mut self,
+        host: String,
+        sock_addr: SocketAddr,
+    ) -> Result<Self, AddError> {
         if utils::authority::is_valid_host(&host) {
-            self.static_dns_mapping.insert(host, ip);
+            self.static_dns_mapping.insert(host, sock_addr);
             Ok(self)
         } else {
             Err(AddError::Invalid)
@@ -764,7 +768,7 @@ impl HttpAclBuilder {
     /// Sets the static DNS mappings.
     pub fn static_dns_mappings(
         mut self,
-        mappings: HashMap<String, IpAddr>,
+        mappings: HashMap<String, SocketAddr>,
     ) -> Result<Self, AddError> {
         for (host, ip) in &mappings {
             if utils::authority::is_valid_host(host) {
