@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::ops::RangeInclusive;
 
@@ -21,6 +22,7 @@ pub struct HttpAcl {
     allowed_ip_ranges: Vec<IpNet>,
     denied_ip_ranges: Vec<IpNet>,
     allow_private_ip_ranges: bool,
+    static_dns_mapping: HashMap<String, IpAddr>,
     method_acl_default: bool,
     host_acl_default: bool,
     port_acl_default: bool,
@@ -51,6 +53,7 @@ impl std::default::Default for HttpAcl {
             allowed_ip_ranges: Vec::new(),
             denied_ip_ranges: Vec::new(),
             allow_private_ip_ranges: false,
+            static_dns_mapping: HashMap::new(),
             method_acl_default: false,
             host_acl_default: false,
             port_acl_default: false,
@@ -180,6 +183,11 @@ impl HttpAcl {
         } else {
             AclClassification::DeniedDefault
         }
+    }
+
+    /// Resolve static DNS mapping.
+    pub fn resolve_static_dns_mapping(&self, host: &str) -> Option<IpAddr> {
+        self.static_dns_mapping.get(host).copied()
     }
 
     /// Checks if an ip is in a list of ip ranges.
@@ -313,6 +321,7 @@ pub struct HttpAclBuilder {
     allowed_ip_ranges: Vec<IpNet>,
     denied_ip_ranges: Vec<IpNet>,
     allow_private_ip_ranges: bool,
+    static_dns_mapping: HashMap<String, IpAddr>,
     method_acl_default: bool,
     host_acl_default: bool,
     port_acl_default: bool,
@@ -344,6 +353,7 @@ impl HttpAclBuilder {
             allowed_ip_ranges: Vec::new(),
             denied_ip_ranges: Vec::new(),
             allow_private_ip_ranges: false,
+            static_dns_mapping: HashMap::new(),
             method_acl_default: false,
             host_acl_default: false,
             port_acl_default: false,
@@ -735,6 +745,37 @@ impl HttpAclBuilder {
         self
     }
 
+    /// Add a static DNS mapping.
+    pub fn add_static_dns_mapping(mut self, host: String, ip: IpAddr) -> Result<Self, AddError> {
+        if utils::authority::is_valid_host(&host) {
+            self.static_dns_mapping.insert(host, ip);
+            Ok(self)
+        } else {
+            Err(AddError::Invalid)
+        }
+    }
+
+    /// Removes a static DNS mapping.
+    pub fn remove_static_dns_mapping(mut self, host: &str) -> Self {
+        self.static_dns_mapping.remove(host);
+        self
+    }
+
+    /// Sets the static DNS mappings.
+    pub fn static_dns_mappings(
+        mut self,
+        mappings: HashMap<String, IpAddr>,
+    ) -> Result<Self, AddError> {
+        for (host, ip) in &mappings {
+            if utils::authority::is_valid_host(host) {
+                self.static_dns_mapping.insert(host.to_string(), *ip);
+            } else {
+                return Err(AddError::Invalid);
+            }
+        }
+        Ok(self)
+    }
+
     /// Builds the [`HttpAcl`](HttpAcl).
     pub fn build(self) -> HttpAcl {
         HttpAcl {
@@ -749,6 +790,7 @@ impl HttpAclBuilder {
             allowed_ip_ranges: self.allowed_ip_ranges,
             denied_ip_ranges: self.denied_ip_ranges,
             allow_private_ip_ranges: self.allow_private_ip_ranges,
+            static_dns_mapping: self.static_dns_mapping,
             method_acl_default: self.method_acl_default,
             host_acl_default: self.host_acl_default,
             port_acl_default: self.port_acl_default,
