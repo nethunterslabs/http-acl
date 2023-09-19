@@ -1,15 +1,16 @@
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeInclusive;
 
 use ipnet::IpNet;
+use matchit::Router;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::{error::AddError, utils};
 
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Clone)]
 pub struct HttpAcl {
     allow_http: bool,
     allow_https: bool,
@@ -21,12 +22,67 @@ pub struct HttpAcl {
     denied_port_ranges: Vec<RangeInclusive<u16>>,
     allowed_ip_ranges: Vec<IpNet>,
     denied_ip_ranges: Vec<IpNet>,
-    allow_private_ip_ranges: bool,
     static_dns_mapping: HashMap<String, SocketAddr>,
+    allowed_url_paths: Vec<String>,
+    allowed_url_paths_router: Router<()>,
+    denied_url_paths: Vec<String>,
+    denied_url_paths_router: Router<()>,
+    allow_private_ip_ranges: bool,
     method_acl_default: bool,
     host_acl_default: bool,
     port_acl_default: bool,
     ip_acl_default: bool,
+    url_path_acl_default: bool,
+}
+
+impl std::fmt::Debug for HttpAcl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpAcl")
+            .field("allow_http", &self.allow_http)
+            .field("allow_https", &self.allow_https)
+            .field("allowed_methods", &self.allowed_methods)
+            .field("denied_methods", &self.denied_methods)
+            .field("allowed_hosts", &self.allowed_hosts)
+            .field("denied_hosts", &self.denied_hosts)
+            .field("allowed_port_ranges", &self.allowed_port_ranges)
+            .field("denied_port_ranges", &self.denied_port_ranges)
+            .field("allowed_ip_ranges", &self.allowed_ip_ranges)
+            .field("denied_ip_ranges", &self.denied_ip_ranges)
+            .field("static_dns_mapping", &self.static_dns_mapping)
+            .field("alllowed_url_paths", &self.allowed_url_paths)
+            .field("denied_url_paths", &self.denied_url_paths)
+            .field("allow_private_ip_ranges", &self.allow_private_ip_ranges)
+            .field("method_acl_default", &self.method_acl_default)
+            .field("host_acl_default", &self.host_acl_default)
+            .field("port_acl_default", &self.port_acl_default)
+            .field("ip_acl_default", &self.ip_acl_default)
+            .field("url_path_acl_default", &self.url_path_acl_default)
+            .finish()
+    }
+}
+
+impl PartialEq for HttpAcl {
+    fn eq(&self, other: &Self) -> bool {
+        self.allow_http == other.allow_http
+            && self.allow_https == other.allow_https
+            && self.allowed_methods == other.allowed_methods
+            && self.denied_methods == other.denied_methods
+            && self.allowed_hosts == other.allowed_hosts
+            && self.denied_hosts == other.denied_hosts
+            && self.allowed_port_ranges == other.allowed_port_ranges
+            && self.denied_port_ranges == other.denied_port_ranges
+            && self.allowed_ip_ranges == other.allowed_ip_ranges
+            && self.denied_ip_ranges == other.denied_ip_ranges
+            && self.static_dns_mapping == other.static_dns_mapping
+            && self.allowed_url_paths == other.allowed_url_paths
+            && self.denied_url_paths == other.denied_url_paths
+            && self.allow_private_ip_ranges == other.allow_private_ip_ranges
+            && self.method_acl_default == other.method_acl_default
+            && self.host_acl_default == other.host_acl_default
+            && self.port_acl_default == other.port_acl_default
+            && self.ip_acl_default == other.ip_acl_default
+            && self.url_path_acl_default == other.url_path_acl_default
+    }
 }
 
 impl std::default::Default for HttpAcl {
@@ -52,12 +108,17 @@ impl std::default::Default for HttpAcl {
             denied_port_ranges: Vec::new(),
             allowed_ip_ranges: Vec::new(),
             denied_ip_ranges: Vec::new(),
-            allow_private_ip_ranges: false,
             static_dns_mapping: HashMap::new(),
+            allowed_url_paths: Vec::new(),
+            allowed_url_paths_router: Router::new(),
+            denied_url_paths: Vec::new(),
+            denied_url_paths_router: Router::new(),
+            allow_private_ip_ranges: false,
             method_acl_default: false,
             host_acl_default: false,
             port_acl_default: false,
             ip_acl_default: false,
+            url_path_acl_default: true,
         }
     }
 }
@@ -190,6 +251,19 @@ impl HttpAcl {
         self.static_dns_mapping.get(host).copied()
     }
 
+    /// Returns whether a URL path is allowed.
+    pub fn is_url_path_allowed(&self, url_path: &str) -> AclClassification {
+        if self.allowed_url_paths_router.at(url_path).is_ok() {
+            AclClassification::AllowedUserAcl
+        } else if self.denied_url_paths_router.at(url_path).is_ok() {
+            AclClassification::DeniedUserAcl
+        } else if self.url_path_acl_default {
+            AclClassification::AllowedDefault
+        } else {
+            AclClassification::DeniedDefault
+        }
+    }
+
     /// Checks if an ip is in a list of ip ranges.
     fn is_ip_in_ranges(ip: &IpAddr, ranges: &[IpNet]) -> bool {
         ranges.iter().any(|range| range.contains(ip))
@@ -307,7 +381,7 @@ impl From<&str> for HttpRequestMethod {
 }
 
 /// A builder for [`HttpAcl`](HttpAcl).
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct HttpAclBuilder {
     allow_http: bool,
@@ -320,12 +394,69 @@ pub struct HttpAclBuilder {
     denied_port_ranges: Vec<RangeInclusive<u16>>,
     allowed_ip_ranges: Vec<IpNet>,
     denied_ip_ranges: Vec<IpNet>,
-    allow_private_ip_ranges: bool,
     static_dns_mapping: HashMap<String, SocketAddr>,
+    allowed_url_paths: Vec<String>,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    allowed_url_paths_router: Router<()>,
+    denied_url_paths: Vec<String>,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    denied_url_paths_router: Router<()>,
+    allow_private_ip_ranges: bool,
     method_acl_default: bool,
     host_acl_default: bool,
     port_acl_default: bool,
     ip_acl_default: bool,
+    url_path_acl_default: bool,
+}
+
+impl std::fmt::Debug for HttpAclBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpAclBuilder")
+            .field("allow_http", &self.allow_http)
+            .field("allow_https", &self.allow_https)
+            .field("allowed_methods", &self.allowed_methods)
+            .field("denied_methods", &self.denied_methods)
+            .field("allowed_hosts", &self.allowed_hosts)
+            .field("denied_hosts", &self.denied_hosts)
+            .field("allowed_port_ranges", &self.allowed_port_ranges)
+            .field("denied_port_ranges", &self.denied_port_ranges)
+            .field("allowed_ip_ranges", &self.allowed_ip_ranges)
+            .field("denied_ip_ranges", &self.denied_ip_ranges)
+            .field("static_dns_mapping", &self.static_dns_mapping)
+            .field("allowed_url_paths", &self.allowed_url_paths)
+            .field("denied_url_paths", &self.denied_url_paths)
+            .field("allow_private_ip_ranges", &self.allow_private_ip_ranges)
+            .field("method_acl_default", &self.method_acl_default)
+            .field("host_acl_default", &self.host_acl_default)
+            .field("port_acl_default", &self.port_acl_default)
+            .field("ip_acl_default", &self.ip_acl_default)
+            .field("url_path_acl_default", &self.url_path_acl_default)
+            .finish()
+    }
+}
+
+impl PartialEq for HttpAclBuilder {
+    fn eq(&self, other: &Self) -> bool {
+        self.allow_http == other.allow_http
+            && self.allow_https == other.allow_https
+            && self.allowed_methods == other.allowed_methods
+            && self.denied_methods == other.denied_methods
+            && self.allowed_hosts == other.allowed_hosts
+            && self.denied_hosts == other.denied_hosts
+            && self.allowed_port_ranges == other.allowed_port_ranges
+            && self.denied_port_ranges == other.denied_port_ranges
+            && self.allowed_ip_ranges == other.allowed_ip_ranges
+            && self.denied_ip_ranges == other.denied_ip_ranges
+            && self.static_dns_mapping == other.static_dns_mapping
+            && self.allowed_url_paths == other.allowed_url_paths
+            && self.denied_url_paths == other.denied_url_paths
+            && self.allow_private_ip_ranges == other.allow_private_ip_ranges
+            && self.method_acl_default == other.method_acl_default
+            && self.host_acl_default == other.host_acl_default
+            && self.port_acl_default == other.port_acl_default
+            && self.ip_acl_default == other.ip_acl_default
+            && self.url_path_acl_default == other.url_path_acl_default
+    }
 }
 
 impl HttpAclBuilder {
@@ -352,12 +483,17 @@ impl HttpAclBuilder {
             denied_port_ranges: Vec::new(),
             allowed_ip_ranges: Vec::new(),
             denied_ip_ranges: Vec::new(),
+            allowed_url_paths: Vec::new(),
+            allowed_url_paths_router: Router::new(),
+            denied_url_paths: Vec::new(),
+            denied_url_paths_router: Router::new(),
             allow_private_ip_ranges: false,
             static_dns_mapping: HashMap::new(),
             method_acl_default: false,
             host_acl_default: false,
             port_acl_default: false,
             ip_acl_default: false,
+            url_path_acl_default: true,
         }
     }
 
@@ -400,6 +536,12 @@ impl HttpAclBuilder {
     /// Set default action for IPs if no ACL match is found.
     pub fn ip_acl_default(mut self, allow: bool) -> Self {
         self.ip_acl_default = allow;
+        self
+    }
+
+    /// Set default action for URL paths if no ACL match is found.
+    pub fn url_path_acl_default(mut self, allow: bool) -> Self {
+        self.url_path_acl_default = allow;
         self
     }
 
@@ -780,6 +922,138 @@ impl HttpAclBuilder {
         Ok(self)
     }
 
+    /// Clears the static DNS mappings.
+    pub fn clear_static_dns_mappings(mut self) -> Self {
+        self.static_dns_mapping.clear();
+        self
+    }
+
+    /// Adds a URL path to the allowed URL paths.
+    pub fn add_allowed_url_path(mut self, url_path: String) -> Result<Self, AddError> {
+        if self.denied_url_paths.contains(&url_path)
+            || self.denied_url_paths_router.at(&url_path).is_ok()
+        {
+            Err(AddError::AlreadyDenied)
+        } else if self.allowed_url_paths.contains(&url_path)
+            || self.allowed_url_paths_router.at(&url_path).is_ok()
+        {
+            Err(AddError::AlreadyAllowed)
+        } else {
+            self.allowed_url_paths.push(url_path.clone());
+            self.allowed_url_paths_router
+                .insert(url_path, ())
+                .map_err(|_| AddError::Invalid)?;
+            Ok(self)
+        }
+    }
+
+    /// Removes a URL path from the allowed URL paths.
+    pub fn remove_allowed_url_path(mut self, url_path: &str) -> Self {
+        self.allowed_url_paths.retain(|p| p != url_path);
+        self.allowed_url_paths_router = {
+            let mut router = Router::new();
+            for url_path in &self.allowed_url_paths {
+                router
+                    .insert(url_path.clone(), ())
+                    .expect("failed to insert url path");
+            }
+            router
+        };
+        self
+    }
+
+    /// Sets the allowed URL paths.
+    pub fn allowed_url_paths(mut self, url_paths: Vec<String>) -> Result<Self, AddError> {
+        for url_path in &url_paths {
+            if self.denied_url_paths.contains(url_path)
+                || self.denied_url_paths_router.at(url_path).is_ok()
+            {
+                return Err(AddError::AlreadyDenied);
+            } else if self.allowed_url_paths.contains(url_path)
+                || self.allowed_url_paths_router.at(url_path).is_ok()
+            {
+                return Err(AddError::AlreadyAllowed);
+            }
+        }
+        for url_path in &url_paths {
+            self.allowed_url_paths_router
+                .insert(url_path.clone(), ())
+                .map_err(|_| AddError::Invalid)?;
+        }
+        self.allowed_url_paths = url_paths;
+        Ok(self)
+    }
+
+    /// Clears the allowed URL paths.
+    pub fn clear_allowed_url_paths(mut self) -> Self {
+        self.allowed_url_paths.clear();
+        self.allowed_url_paths_router = Router::new();
+        self
+    }
+
+    /// Adds a URL path to the denied URL paths.
+    pub fn add_denied_url_path(mut self, url_path: String) -> Result<Self, AddError> {
+        if self.allowed_url_paths.contains(&url_path)
+            || self.allowed_url_paths_router.at(&url_path).is_ok()
+        {
+            Err(AddError::AlreadyAllowed)
+        } else if self.denied_url_paths.contains(&url_path)
+            || self.denied_url_paths_router.at(&url_path).is_ok()
+        {
+            Err(AddError::AlreadyDenied)
+        } else {
+            self.denied_url_paths.push(url_path.clone());
+            self.denied_url_paths_router
+                .insert(url_path, ())
+                .map_err(|_| AddError::Invalid)?;
+            Ok(self)
+        }
+    }
+
+    /// Removes a URL path from the denied URL paths.
+    pub fn remove_denied_url_path(mut self, url_path: &str) -> Self {
+        self.denied_url_paths.retain(|p| p != url_path);
+        self.denied_url_paths_router = {
+            let mut router = Router::new();
+            for url_path in &self.denied_url_paths {
+                router
+                    .insert(url_path.clone(), ())
+                    .expect("failed to insert url path");
+            }
+            router
+        };
+        self
+    }
+
+    /// Sets the denied URL paths.
+    pub fn denied_url_paths(mut self, url_paths: Vec<String>) -> Result<Self, AddError> {
+        for url_path in &url_paths {
+            if self.allowed_url_paths.contains(url_path)
+                || self.allowed_url_paths_router.at(url_path).is_ok()
+            {
+                return Err(AddError::AlreadyAllowed);
+            } else if self.denied_url_paths.contains(url_path)
+                || self.denied_url_paths_router.at(url_path).is_ok()
+            {
+                return Err(AddError::AlreadyDenied);
+            }
+        }
+        for url_path in &url_paths {
+            self.denied_url_paths_router
+                .insert(url_path.clone(), ())
+                .map_err(|_| AddError::Invalid)?;
+        }
+        self.denied_url_paths = url_paths;
+        Ok(self)
+    }
+
+    /// Clears the denied URL paths.
+    pub fn clear_denied_url_paths(mut self) -> Self {
+        self.denied_url_paths.clear();
+        self.denied_url_paths_router = Router::new();
+        self
+    }
+
     /// Builds the [`HttpAcl`](HttpAcl).
     pub fn build(self) -> HttpAcl {
         HttpAcl {
@@ -793,56 +1067,131 @@ impl HttpAclBuilder {
             denied_port_ranges: self.denied_port_ranges,
             allowed_ip_ranges: self.allowed_ip_ranges,
             denied_ip_ranges: self.denied_ip_ranges,
-            allow_private_ip_ranges: self.allow_private_ip_ranges,
+            allowed_url_paths: self.allowed_url_paths,
+            allowed_url_paths_router: self.allowed_url_paths_router,
+            denied_url_paths: self.denied_url_paths,
+            denied_url_paths_router: self.denied_url_paths_router,
             static_dns_mapping: self.static_dns_mapping,
+            allow_private_ip_ranges: self.allow_private_ip_ranges,
             method_acl_default: self.method_acl_default,
             host_acl_default: self.host_acl_default,
             port_acl_default: self.port_acl_default,
             ip_acl_default: self.ip_acl_default,
+            url_path_acl_default: self.url_path_acl_default,
         }
     }
 
     /// Builds the [`HttpAcl`](HttpAcl) and returns an error if the configuration is invalid.
-    /// This can be used as a validity check for deserialized ACLs that were genrated externally.
-    pub fn try_build(self) -> Result<HttpAcl, AddError> {
+    /// This is used for deserialized ACLs as the URL Path Routers need to be built.
+    pub fn try_build(mut self) -> Result<HttpAcl, AddError> {
+        if !utils::has_unique_elements(&self.allowed_methods) {
+            return Err(AddError::AlreadyAllowed);
+        }
         for method in &self.allowed_methods {
             if self.denied_methods.contains(method) {
                 return Err(AddError::AlreadyDenied);
             }
+        }
+        if !utils::has_unique_elements(&self.denied_methods) {
+            return Err(AddError::AlreadyDenied);
         }
         for method in &self.denied_methods {
             if self.allowed_methods.contains(method) {
                 return Err(AddError::AlreadyAllowed);
             }
         }
+        if !utils::has_unique_elements(&self.allowed_hosts) {
+            return Err(AddError::AlreadyAllowed);
+        }
         for host in &self.allowed_hosts {
+            if utils::authority::is_valid_host(host) {
+                return Err(AddError::Invalid);
+            }
             if self.denied_hosts.contains(host) {
                 return Err(AddError::AlreadyDenied);
             }
         }
+        if !utils::has_unique_elements(&self.denied_hosts) {
+            return Err(AddError::AlreadyDenied);
+        }
         for host in &self.denied_hosts {
+            if utils::authority::is_valid_host(host) {
+                return Err(AddError::Invalid);
+            }
             if self.allowed_hosts.contains(host) {
                 return Err(AddError::AlreadyAllowed);
             }
+        }
+        if !utils::has_unique_elements(&self.allowed_port_ranges) {
+            return Err(AddError::AlreadyAllowed);
         }
         for port_range in &self.allowed_port_ranges {
             if self.denied_port_ranges.contains(port_range) {
                 return Err(AddError::AlreadyDenied);
             }
         }
+        if !utils::has_unique_elements(&self.denied_port_ranges) {
+            return Err(AddError::AlreadyDenied);
+        }
         for port_range in &self.denied_port_ranges {
             if self.allowed_port_ranges.contains(port_range) {
                 return Err(AddError::AlreadyAllowed);
             }
+        }
+        if !utils::has_unique_elements(&self.allowed_ip_ranges) {
+            return Err(AddError::AlreadyAllowed);
         }
         for ip_range in &self.allowed_ip_ranges {
             if self.denied_ip_ranges.contains(ip_range) {
                 return Err(AddError::AlreadyDenied);
             }
         }
+        if !utils::has_unique_elements(&self.denied_ip_ranges) {
+            return Err(AddError::AlreadyDenied);
+        }
         for ip_range in &self.denied_ip_ranges {
             if self.allowed_ip_ranges.contains(ip_range) {
                 return Err(AddError::AlreadyAllowed);
+            }
+        }
+        if !utils::has_unique_elements(&self.static_dns_mapping) {
+            return Err(AddError::AlreadyAllowed);
+        }
+        for host in self.static_dns_mapping.keys() {
+            if !utils::authority::is_valid_host(host) {
+                return Err(AddError::Invalid);
+            }
+        }
+        if !utils::has_unique_elements(&self.allowed_url_paths) {
+            return Err(AddError::AlreadyAllowed);
+        }
+        for url_path in &self.allowed_url_paths {
+            if self.denied_url_paths.contains(url_path)
+                || self.denied_url_paths_router.at(url_path).is_ok()
+            {
+                return Err(AddError::AlreadyDenied);
+            } else if self.allowed_url_paths_router.at(url_path).is_ok() {
+                return Err(AddError::AlreadyAllowed);
+            } else {
+                self.allowed_url_paths_router
+                    .insert(url_path.clone(), ())
+                    .map_err(|_| AddError::Invalid)?;
+            }
+        }
+        if !utils::has_unique_elements(&self.denied_url_paths) {
+            return Err(AddError::AlreadyDenied);
+        }
+        for url_path in &self.denied_url_paths {
+            if self.allowed_url_paths.contains(url_path)
+                || self.allowed_url_paths_router.at(url_path).is_ok()
+            {
+                return Err(AddError::AlreadyAllowed);
+            } else if self.denied_url_paths_router.at(url_path).is_ok() {
+                return Err(AddError::AlreadyDenied);
+            } else {
+                self.denied_url_paths_router
+                    .insert(url_path.clone(), ())
+                    .map_err(|_| AddError::Invalid)?;
             }
         }
         Ok(self.build())

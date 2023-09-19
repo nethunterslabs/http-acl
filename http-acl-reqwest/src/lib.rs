@@ -100,6 +100,15 @@ impl Middleware for HttpAclMiddleware {
                 }
             }
 
+            let acl_url_path_match = self.acl.is_url_path_allowed(req.url().path());
+            if acl_url_path_match.is_denied() {
+                return Err(Error::Middleware(anyhow!(
+                    "path {} is denied - {}",
+                    req.url().path(),
+                    acl_url_path_match
+                )));
+            }
+
             next.run(req, extensions).await
         } else {
             return Err(Error::Middleware(anyhow!("missing host")));
