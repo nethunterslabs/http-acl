@@ -10,9 +10,9 @@ categories.workspace = true
 keywords.workspace = true
 
 [dependencies]
-ipnet = "2.8.0"
-matchit = "0.7.2"
-serde = { version = "1.0.188", features = ["derive"], optional = true }
+ipnet = "2.9.0"
+matchit = "0.7.3"
+serde = { version = "1.0.190", features = ["derive"], optional = true }
 url = "2.4.1"
 
 [features]
