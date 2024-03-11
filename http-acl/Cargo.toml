@@ -11,7 +11,7 @@ keywords.workspace = true
 
 [dependencies]
 ipnet = "2.9.0"
-matchit = "0.7.3"
+matchit = "0.8.0"
 serde = { version = "1.0.190", features = ["derive"], optional = true }
 url = "2.4.1"
 
