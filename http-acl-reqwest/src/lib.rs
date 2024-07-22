@@ -1,10 +1,10 @@
 use std::net::ToSocketAddrs;
 
 use anyhow::anyhow;
+use http::Extensions;
 use http_acl::utils::authority::{Authority, Host};
 use reqwest::{Request, Response};
 use reqwest_middleware::{Error, Middleware, Next};
-use task_local_extensions::Extensions;
 
 pub use http_acl;
 
