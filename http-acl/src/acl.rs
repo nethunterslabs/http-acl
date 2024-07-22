@@ -1,3 +1,6 @@
+//! Contains the [`HttpAcl`], [`HttpAclBuilder`],
+//! and related types.
+
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
@@ -11,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::{error::AddError, utils};
 
 #[derive(Clone)]
+/// Represents an HTTP ACL.
 pub struct HttpAcl {
     allow_http: bool,
     allow_https: bool,
@@ -124,7 +128,7 @@ impl std::default::Default for HttpAcl {
 }
 
 impl HttpAcl {
-    /// Returns a new [`HttpAclBuilder`](HttpAclBuilder).
+    /// Returns a new [`HttpAclBuilder`].
     pub fn builder() -> HttpAclBuilder {
         HttpAclBuilder::new()
     }
@@ -351,15 +355,25 @@ impl AclClassification {
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum HttpRequestMethod {
+    /// The CONNECT method.
     CONNECT,
+    /// The DELETE method.
     DELETE,
+    /// The GET method.
     GET,
+    /// The HEAD method.
     HEAD,
+    /// The OPTIONS method.
     OPTIONS,
+    /// The PATCH method.
     PATCH,
+    /// The POST method.
     POST,
+    /// The PUT method.
     PUT,
+    /// The TRACE method.
     TRACE,
+    /// Any other method.
     OTHER(String),
 }
 
@@ -380,7 +394,7 @@ impl From<&str> for HttpRequestMethod {
     }
 }
 
-/// A builder for [`HttpAcl`](HttpAcl).
+/// A builder for [`HttpAcl`].
 #[derive(Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct HttpAclBuilder {
@@ -460,7 +474,7 @@ impl PartialEq for HttpAclBuilder {
 }
 
 impl HttpAclBuilder {
-    /// Create a new [`HttpAclBuilder`](HttpAclBuilder).
+    /// Create a new [`HttpAclBuilder`].
     pub fn new() -> Self {
         Self {
             allow_http: true,
@@ -1054,7 +1068,7 @@ impl HttpAclBuilder {
         self
     }
 
-    /// Builds the [`HttpAcl`](HttpAcl).
+    /// Builds the [`HttpAcl`].
     pub fn build(self) -> HttpAcl {
         HttpAcl {
             allow_http: self.allow_http,
@@ -1081,7 +1095,7 @@ impl HttpAclBuilder {
         }
     }
 
-    /// Builds the [`HttpAcl`](HttpAcl) and returns an error if the configuration is invalid.
+    /// Builds the [`HttpAcl`] and returns an error if the configuration is invalid.
     /// This is used for deserialized ACLs as the URL Path Routers need to be built.
     pub fn try_build(mut self) -> Result<HttpAcl, AddError> {
         if !utils::has_unique_elements(&self.allowed_methods) {

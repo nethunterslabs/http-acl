@@ -1,3 +1,5 @@
+//! Utilities for parsing authorities.
+
 /// Checks if a host is valid or if it is a valid IP address.
 pub fn is_valid_host(host: &str) -> bool {
     host.parse::<std::net::SocketAddr>().is_ok()
@@ -8,7 +10,9 @@ pub fn is_valid_host(host: &str) -> bool {
 /// Represents a parsed authority.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Authority {
+    /// The host, which can be a domain or an IP address.
     pub host: Host,
+    /// The port.
     pub port: u16,
 }
 
@@ -25,7 +29,9 @@ impl std::fmt::Display for Authority {
 /// Represents a parsed host.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Host {
+    /// A domain.
     Domain(String),
+    /// An IP address.
     Ip(std::net::IpAddr),
 }
 
@@ -43,7 +49,9 @@ impl std::fmt::Display for Host {
 
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+/// An error that can occur when parsing an authority.
 pub enum AuthorityError {
+    /// The host is invalid.
     InvalidHost,
 }
 

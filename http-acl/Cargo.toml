@@ -10,13 +10,13 @@ categories.workspace = true
 keywords.workspace = true
 
 [dependencies]
-ipnet = "2.9.0"
-matchit = "0.7.3"
-serde = { version = "1.0.190", features = ["derive"], optional = true }
-url = "2.4.1"
+ipnet = { workspace = true }
+matchit = { workspace = true }
+serde = { workspace = true, optional = true }
+thiserror = { workspace = true }
+url = { workspace = true }
 
 [features]
 serde = ["dep:serde", "ipnet/serde"]
 
 [dev-dependencies]
-serde_json = "1.0"

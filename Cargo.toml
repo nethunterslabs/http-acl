@@ -3,9 +3,23 @@ members = ["http-acl", "http-acl-reqwest"]
 resolver = "2"
 
 [workspace.package]
-version = "0.5.6"
+version = "0.6.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/nethunterslabs/http-acl"
 categories = ["network-programming", "web-programming::http-client"]
 keywords = ["http", "acl", "ip", "network", "ssrf"]
+
+[workspace.dependencies]
+anyhow = "1.0.86"
+async-trait = "0.1.81"
+futures-util-preview = "0.2.2"
+http = "1.1.0"
+ipnet = "2.9.0"
+matchit = "0.8.4"
+reqwest = { version = "0.12.5", default-features = false }
+reqwest-middleware = "0.3.2"
+serde = { version = "1.0.204", features = ["derive"] }
+thiserror = "1.0.63"
+tokio = { version = "1.38.1", features = ["macros", "rt-multi-thread"] }
+url = "2.5.2"
