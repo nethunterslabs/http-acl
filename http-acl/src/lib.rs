@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![warn(missing_docs)]
 
 pub use ipnet::IpNet;
 
@@ -123,7 +124,7 @@ mod tests {
             .unwrap()
             .add_denied_url_path("/denied".to_string())
             .unwrap()
-            .add_denied_url_path("/denied/*path".to_string())
+            .add_denied_url_path("/denied/{*path}".to_string())
             .unwrap()
             .build();
 

@@ -1,3 +1,5 @@
+//! Utility functions for the http-acl crate.
+
 use std::collections::HashSet;
 use std::hash::Hash;
 

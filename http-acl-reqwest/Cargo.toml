@@ -10,12 +10,15 @@ categories.workspace = true
 keywords.workspace = true
 
 [dependencies]
-anyhow = "1.0.75"
-async-trait = "0.1.74"
-http-acl = { path = "../http-acl", version = "0.5.5" }
-reqwest = { version = "0.11.22", default-features = false }
-reqwest-middleware = "0.2.4"
-task-local-extensions = "0.1.4"
+http-acl = { path = "../http-acl", version = "0.5.7" }
+
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+hyper = { workspace = true }
+reqwest = { workspace = true }
+reqwest-middleware = { workspace = true }
+task-local-extensions = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true }

@@ -14,6 +14,7 @@ This crate provides a simple ACL to allow you to specify which hosts, ports, and
 use http_acl::{HttpAcl, IpNet};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create an HTTP ACL
     let acl = HttpAcl::builder()
         .add_allowed_host("example.com".to_string())
         .unwrap()
@@ -31,6 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap()
         .build();
 
+    // Check if a request is allowed
     assert!(acl.is_host_allowed("example.com").is_allowed());
     assert!(acl.is_host_allowed("example.org").is_allowed());
     assert!(!acl.is_host_allowed("example.net").is_allowed());
