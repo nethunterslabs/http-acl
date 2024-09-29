@@ -11,7 +11,10 @@ use matchit::Router;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{error::AddError, utils};
+use crate::{
+    error::AddError,
+    utils::{self, IntoIpRange},
+};
 
 #[derive(Clone)]
 /// Represents an HTTP ACL.
@@ -24,8 +27,8 @@ pub struct HttpAcl {
     denied_hosts: Vec<String>,
     allowed_port_ranges: Vec<RangeInclusive<u16>>,
     denied_port_ranges: Vec<RangeInclusive<u16>>,
-    allowed_ip_ranges: Vec<IpNet>,
-    denied_ip_ranges: Vec<IpNet>,
+    allowed_ip_ranges: Vec<RangeInclusive<IpAddr>>,
+    denied_ip_ranges: Vec<RangeInclusive<IpAddr>>,
     static_dns_mapping: HashMap<String, SocketAddr>,
     allowed_url_paths: Vec<String>,
     allowed_url_paths_router: Router<()>,
@@ -269,7 +272,7 @@ impl HttpAcl {
     }
 
     /// Checks if an ip is in a list of ip ranges.
-    fn is_ip_in_ranges(ip: &IpAddr, ranges: &[IpNet]) -> bool {
+    fn is_ip_in_ranges(ip: &IpAddr, ranges: &[RangeInclusive<IpAddr>]) -> bool {
         ranges.iter().any(|range| range.contains(ip))
     }
 
@@ -406,8 +409,8 @@ pub struct HttpAclBuilder {
     denied_hosts: Vec<String>,
     allowed_port_ranges: Vec<RangeInclusive<u16>>,
     denied_port_ranges: Vec<RangeInclusive<u16>>,
-    allowed_ip_ranges: Vec<IpNet>,
-    denied_ip_ranges: Vec<IpNet>,
+    allowed_ip_ranges: Vec<RangeInclusive<IpAddr>>,
+    denied_ip_ranges: Vec<RangeInclusive<IpAddr>>,
     static_dns_mapping: HashMap<String, SocketAddr>,
     allowed_url_paths: Vec<String>,
     #[cfg_attr(feature = "serde", serde(skip))]
@@ -830,7 +833,8 @@ impl HttpAclBuilder {
     }
 
     /// Adds an IP range to the allowed IP ranges.
-    pub fn add_allowed_ip_range(mut self, ip_range: IpNet) -> Result<Self, AddError> {
+    pub fn add_allowed_ip_range<Ip: IntoIpRange>(mut self, ip_range: Ip) -> Result<Self, AddError> {
+        let ip_range = ip_range.into_range().ok_or(AddError::Invalid)?;
         if self.denied_ip_ranges.contains(&ip_range) {
             return Err(AddError::AlreadyDenied);
         } else if self.allowed_ip_ranges.contains(&ip_range) {
@@ -841,13 +845,25 @@ impl HttpAclBuilder {
     }
 
     /// Removes an IP range from the allowed IP ranges.
-    pub fn remove_allowed_ip_range(mut self, ip_range: IpNet) -> Self {
+    pub fn remove_allowed_ip_range<Ip: IntoIpRange>(
+        mut self,
+        ip_range: Ip,
+    ) -> Result<Self, AddError> {
+        let ip_range = ip_range.into_range().ok_or(AddError::Invalid)?;
         self.allowed_ip_ranges.retain(|ip| ip != &ip_range);
-        self
+        Ok(self)
     }
 
     /// Sets the allowed IP ranges.
-    pub fn allowed_ip_ranges(mut self, ip_ranges: Vec<IpNet>) -> Result<Self, AddError> {
+    pub fn allowed_ip_ranges<Ip: IntoIpRange>(
+        mut self,
+        ip_ranges: Vec<Ip>,
+    ) -> Result<Self, AddError> {
+        let ip_ranges = ip_ranges
+            .into_iter()
+            .map(|ip| ip.into_range())
+            .collect::<Option<Vec<_>>>()
+            .ok_or(AddError::Invalid)?;
         for ip_range in &ip_ranges {
             if self.denied_ip_ranges.contains(ip_range) {
                 return Err(AddError::AlreadyDenied);
@@ -866,7 +882,8 @@ impl HttpAclBuilder {
     }
 
     /// Adds an IP range to the denied IP ranges.
-    pub fn add_denied_ip_range(mut self, ip_range: IpNet) -> Result<Self, AddError> {
+    pub fn add_denied_ip_range<Ip: IntoIpRange>(mut self, ip_range: Ip) -> Result<Self, AddError> {
+        let ip_range = ip_range.into_range().ok_or(AddError::Invalid)?;
         if self.allowed_ip_ranges.contains(&ip_range) {
             return Err(AddError::AlreadyAllowed);
         } else if self.denied_ip_ranges.contains(&ip_range) {
@@ -877,13 +894,22 @@ impl HttpAclBuilder {
     }
 
     /// Removes an IP range from the denied IP ranges.
-    pub fn remove_denied_ip_range(mut self, ip_range: IpNet) -> Self {
+    pub fn remove_denied_ip_range<Ip: IntoIpRange>(
+        mut self,
+        ip_range: Ip,
+    ) -> Result<Self, AddError> {
+        let ip_range = ip_range.into_range().ok_or(AddError::Invalid)?;
         self.denied_ip_ranges.retain(|ip| ip != &ip_range);
-        self
+        Ok(self)
     }
 
     /// Sets the denied IP ranges.
     pub fn denied_ip_ranges(mut self, ip_ranges: Vec<IpNet>) -> Result<Self, AddError> {
+        let ip_ranges = ip_ranges
+            .into_iter()
+            .map(|ip| ip.into_range())
+            .collect::<Option<Vec<_>>>()
+            .ok_or(AddError::Invalid)?;
         for ip_range in &ip_ranges {
             if self.allowed_ip_ranges.contains(ip_range) {
                 return Err(AddError::AlreadyAllowed);
