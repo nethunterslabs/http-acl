@@ -6,7 +6,6 @@ use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeInclusive;
 
-use ipnet::IpNet;
 use matchit::Router;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -904,7 +903,10 @@ impl HttpAclBuilder {
     }
 
     /// Sets the denied IP ranges.
-    pub fn denied_ip_ranges(mut self, ip_ranges: Vec<IpNet>) -> Result<Self, AddError> {
+    pub fn denied_ip_ranges<Ip: IntoIpRange>(
+        mut self,
+        ip_ranges: Vec<Ip>,
+    ) -> Result<Self, AddError> {
         let ip_ranges = ip_ranges
             .into_iter()
             .map(|ip| ip.into_range())
