@@ -396,6 +396,24 @@ impl From<&str> for HttpRequestMethod {
     }
 }
 
+impl HttpRequestMethod {
+    /// Return the method as a `&str`.
+    pub fn as_str(&self) -> &str {
+        match self {
+            HttpRequestMethod::CONNECT => "CONNECT",
+            HttpRequestMethod::DELETE => "DELETE",
+            HttpRequestMethod::GET => "GET",
+            HttpRequestMethod::HEAD => "HEAD",
+            HttpRequestMethod::OPTIONS => "OPTIONS",
+            HttpRequestMethod::PATCH => "PATCH",
+            HttpRequestMethod::POST => "POST",
+            HttpRequestMethod::PUT => "PUT",
+            HttpRequestMethod::TRACE => "TRACE",
+            HttpRequestMethod::OTHER(other) => other,
+        }
+    }
+}
+
 /// A builder for [`HttpAcl`].
 #[derive(Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
