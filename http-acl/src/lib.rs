@@ -7,7 +7,8 @@ pub mod acl;
 pub mod error;
 pub mod utils;
 
-pub use acl::{HttpAcl, HttpAclBuilder};
+pub use acl::{HttpAcl, HttpAclBuilder, HttpRequestMethod};
+pub use utils::IntoIpRange;
 
 #[cfg(test)]
 mod tests {
