@@ -239,10 +239,9 @@ mod tests {
         let request = client.get("http://example.com/").send().await;
 
         assert!(request.is_err());
-        assert_eq!(request
-            .unwrap_err()
-            .to_string(),
-            "Middleware error: host example.com is denied - The entiy is denied according to the denied ACL."
+        assert_eq!(
+            request.unwrap_err().to_string(),
+            "host example.com is denied - The entiy is denied according to the denied ACL."
         );
     }
 }
