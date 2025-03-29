@@ -20,18 +20,18 @@ use crate::{
 pub struct HttpAcl {
     allow_http: bool,
     allow_https: bool,
-    allowed_methods: Vec<HttpRequestMethod>,
-    denied_methods: Vec<HttpRequestMethod>,
-    allowed_hosts: Vec<String>,
-    denied_hosts: Vec<String>,
-    allowed_port_ranges: Vec<RangeInclusive<u16>>,
-    denied_port_ranges: Vec<RangeInclusive<u16>>,
-    allowed_ip_ranges: Vec<RangeInclusive<IpAddr>>,
-    denied_ip_ranges: Vec<RangeInclusive<IpAddr>>,
-    static_dns_mapping: HashMap<String, SocketAddr>,
-    allowed_url_paths: Vec<String>,
+    allowed_methods: Box<[HttpRequestMethod]>,
+    denied_methods: Box<[HttpRequestMethod]>,
+    allowed_hosts: Box<[Box<str>]>,
+    denied_hosts: Box<[Box<str>]>,
+    allowed_port_ranges: Box<[RangeInclusive<u16>]>,
+    denied_port_ranges: Box<[RangeInclusive<u16>]>,
+    allowed_ip_ranges: Box<[RangeInclusive<IpAddr>]>,
+    denied_ip_ranges: Box<[RangeInclusive<IpAddr>]>,
+    static_dns_mapping: HashMap<Box<str>, SocketAddr>,
+    allowed_url_paths: Box<[Box<str>]>,
     allowed_url_paths_router: Router<()>,
-    denied_url_paths: Vec<String>,
+    denied_url_paths: Box<[Box<str>]>,
     denied_url_paths_router: Router<()>,
     allow_private_ip_ranges: bool,
     method_acl_default: bool,
@@ -55,7 +55,7 @@ impl std::fmt::Debug for HttpAcl {
             .field("allowed_ip_ranges", &self.allowed_ip_ranges)
             .field("denied_ip_ranges", &self.denied_ip_ranges)
             .field("static_dns_mapping", &self.static_dns_mapping)
-            .field("alllowed_url_paths", &self.allowed_url_paths)
+            .field("allowed_url_paths", &self.allowed_url_paths)
             .field("denied_url_paths", &self.denied_url_paths)
             .field("allow_private_ip_ranges", &self.allow_private_ip_ranges)
             .field("method_acl_default", &self.method_acl_default)
@@ -106,18 +106,19 @@ impl std::default::Default for HttpAcl {
                 HttpRequestMethod::POST,
                 HttpRequestMethod::PUT,
                 HttpRequestMethod::TRACE,
-            ],
-            denied_methods: Vec::new(),
-            allowed_hosts: Vec::new(),
-            denied_hosts: Vec::new(),
-            allowed_port_ranges: vec![80..=80, 443..=443],
-            denied_port_ranges: Vec::new(),
-            allowed_ip_ranges: Vec::new(),
-            denied_ip_ranges: Vec::new(),
+            ]
+            .into_boxed_slice(),
+            denied_methods: Vec::new().into_boxed_slice(),
+            allowed_hosts: Vec::new().into_boxed_slice(),
+            denied_hosts: Vec::new().into_boxed_slice(),
+            allowed_port_ranges: vec![80..=80, 443..=443].into_boxed_slice(),
+            denied_port_ranges: Vec::new().into_boxed_slice(),
+            allowed_ip_ranges: Vec::new().into_boxed_slice(),
+            denied_ip_ranges: Vec::new().into_boxed_slice(),
             static_dns_mapping: HashMap::new(),
-            allowed_url_paths: Vec::new(),
+            allowed_url_paths: Vec::new().into_boxed_slice(),
             allowed_url_paths_router: Router::new(),
-            denied_url_paths: Vec::new(),
+            denied_url_paths: Vec::new().into_boxed_slice(),
             denied_url_paths_router: Router::new(),
             allow_private_ip_ranges: false,
             method_acl_default: false,
@@ -205,9 +206,9 @@ impl HttpAcl {
 
     /// Returns whether the host is allowed.
     pub fn is_host_allowed(&self, host: &str) -> AclClassification {
-        if self.denied_hosts.contains(&host.to_string()) {
+        if self.denied_hosts.iter().any(|h| h.as_ref() == host) {
             AclClassification::DeniedUserAcl
-        } else if self.allowed_hosts.contains(&host.to_string()) {
+        } else if self.allowed_hosts.iter().any(|h| h.as_ref() == host) {
             AclClassification::AllowedUserAcl
         } else if self.host_acl_default {
             AclClassification::AllowedDefault
@@ -376,7 +377,7 @@ pub enum HttpRequestMethod {
     /// The TRACE method.
     TRACE,
     /// Any other method.
-    OTHER(String),
+    OTHER(Box<str>),
 }
 
 impl From<&str> for HttpRequestMethod {
@@ -391,7 +392,7 @@ impl From<&str> for HttpRequestMethod {
             "POST" => HttpRequestMethod::POST,
             "PUT" => HttpRequestMethod::PUT,
             "TRACE" => HttpRequestMethod::TRACE,
-            _ => HttpRequestMethod::OTHER(method.to_string()),
+            _ => HttpRequestMethod::OTHER(method.into()),
         }
     }
 }
@@ -1119,19 +1120,39 @@ impl HttpAclBuilder {
         HttpAcl {
             allow_http: self.allow_http,
             allow_https: self.allow_https,
-            allowed_methods: self.allowed_methods,
-            denied_methods: self.denied_methods,
-            allowed_hosts: self.allowed_hosts,
-            denied_hosts: self.denied_hosts,
-            allowed_port_ranges: self.allowed_port_ranges,
-            denied_port_ranges: self.denied_port_ranges,
-            allowed_ip_ranges: self.allowed_ip_ranges,
-            denied_ip_ranges: self.denied_ip_ranges,
-            allowed_url_paths: self.allowed_url_paths,
+            allowed_methods: self.allowed_methods.into_boxed_slice(),
+            denied_methods: self.denied_methods.into_boxed_slice(),
+            allowed_hosts: self
+                .allowed_hosts
+                .into_iter()
+                .map(|x| x.into_boxed_str())
+                .collect(),
+            denied_hosts: self
+                .denied_hosts
+                .into_iter()
+                .map(|x| x.into_boxed_str())
+                .collect(),
+            allowed_port_ranges: self.allowed_port_ranges.into_boxed_slice(),
+            denied_port_ranges: self.denied_port_ranges.into_boxed_slice(),
+            allowed_ip_ranges: self.allowed_ip_ranges.into_boxed_slice(),
+            denied_ip_ranges: self.denied_ip_ranges.into_boxed_slice(),
+            allowed_url_paths: self
+                .allowed_url_paths
+                .into_iter()
+                .map(|x| x.into_boxed_str())
+                .collect(),
             allowed_url_paths_router: self.allowed_url_paths_router,
-            denied_url_paths: self.denied_url_paths,
+            denied_url_paths: self
+                .denied_url_paths
+                .into_iter()
+                .map(|x| x.into_boxed_str())
+                .collect(),
             denied_url_paths_router: self.denied_url_paths_router,
-            static_dns_mapping: self.static_dns_mapping,
+            static_dns_mapping: self
+                .static_dns_mapping
+                .into_iter()
+                .map(|(k, v)| (k.into_boxed_str(), v))
+                .collect(),
             allow_private_ip_ranges: self.allow_private_ip_ranges,
             method_acl_default: self.method_acl_default,
             host_acl_default: self.host_acl_default,
