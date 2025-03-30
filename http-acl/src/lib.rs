@@ -41,9 +41,10 @@ mod tests {
         assert!(!acl.is_port_allowed(8443).is_allowed());
         assert!(acl.is_ip_allowed(&"1.1.1.1".parse().unwrap()).is_allowed());
         assert!(acl.is_ip_allowed(&"9.9.9.9".parse().unwrap()).is_denied());
-        assert!(acl
-            .is_ip_allowed(&"192.168.1.1".parse().unwrap())
-            .is_denied());
+        assert!(
+            acl.is_ip_allowed(&"192.168.1.1".parse().unwrap())
+                .is_denied()
+        );
     }
 
     #[test]
@@ -88,9 +89,10 @@ mod tests {
 
         assert!(acl.is_ip_allowed(&"1.1.1.1".parse().unwrap()).is_allowed());
         assert!(acl.is_ip_allowed(&"9.9.9.9".parse().unwrap()).is_denied());
-        assert!(acl
-            .is_ip_allowed(&"192.168.1.1".parse().unwrap())
-            .is_denied());
+        assert!(
+            acl.is_ip_allowed(&"192.168.1.1".parse().unwrap())
+                .is_denied()
+        );
     }
 
     #[test]
@@ -100,18 +102,20 @@ mod tests {
             .ip_acl_default(true)
             .build();
 
-        assert!(acl
-            .is_ip_allowed(&"192.168.1.1".parse().unwrap())
-            .is_allowed());
+        assert!(
+            acl.is_ip_allowed(&"192.168.1.1".parse().unwrap())
+                .is_allowed()
+        );
     }
 
     #[test]
     fn default_ip_acl() {
         let acl = HttpAclBuilder::new().build();
 
-        assert!(acl
-            .is_ip_allowed(&"192.168.1.1".parse().unwrap())
-            .is_denied());
+        assert!(
+            acl.is_ip_allowed(&"192.168.1.1".parse().unwrap())
+                .is_denied()
+        );
         assert!(acl.is_ip_allowed(&"1.1.1.1".parse().unwrap()).is_denied());
         assert!(!acl.is_port_allowed(8080).is_allowed());
     }

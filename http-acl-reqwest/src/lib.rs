@@ -9,8 +9,8 @@ use anyhow::anyhow;
 use http::Extensions;
 use http_acl::utils::authority::{Authority, Host};
 use reqwest::{
-    dns::{Name, Resolve, Resolving},
     Request, Response,
+    dns::{Name, Resolve, Resolving},
 };
 use reqwest_middleware::{Error, Middleware, Next};
 use thiserror::Error;
