@@ -29,9 +29,7 @@ pub struct HttpAcl {
     allowed_ip_ranges: Box<[RangeInclusive<IpAddr>]>,
     denied_ip_ranges: Box<[RangeInclusive<IpAddr>]>,
     static_dns_mapping: HashMap<Box<str>, SocketAddr>,
-    allowed_url_paths: Box<[Box<str>]>,
     allowed_url_paths_router: Router<()>,
-    denied_url_paths: Box<[Box<str>]>,
     denied_url_paths_router: Router<()>,
     allow_private_ip_ranges: bool,
     method_acl_default: bool,
@@ -55,8 +53,6 @@ impl std::fmt::Debug for HttpAcl {
             .field("allowed_ip_ranges", &self.allowed_ip_ranges)
             .field("denied_ip_ranges", &self.denied_ip_ranges)
             .field("static_dns_mapping", &self.static_dns_mapping)
-            .field("allowed_url_paths", &self.allowed_url_paths)
-            .field("denied_url_paths", &self.denied_url_paths)
             .field("allow_private_ip_ranges", &self.allow_private_ip_ranges)
             .field("method_acl_default", &self.method_acl_default)
             .field("host_acl_default", &self.host_acl_default)
@@ -80,8 +76,6 @@ impl PartialEq for HttpAcl {
             && self.allowed_ip_ranges == other.allowed_ip_ranges
             && self.denied_ip_ranges == other.denied_ip_ranges
             && self.static_dns_mapping == other.static_dns_mapping
-            && self.allowed_url_paths == other.allowed_url_paths
-            && self.denied_url_paths == other.denied_url_paths
             && self.allow_private_ip_ranges == other.allow_private_ip_ranges
             && self.method_acl_default == other.method_acl_default
             && self.host_acl_default == other.host_acl_default
@@ -116,9 +110,7 @@ impl std::default::Default for HttpAcl {
             allowed_ip_ranges: Vec::new().into_boxed_slice(),
             denied_ip_ranges: Vec::new().into_boxed_slice(),
             static_dns_mapping: HashMap::new(),
-            allowed_url_paths: Vec::new().into_boxed_slice(),
             allowed_url_paths_router: Router::new(),
-            denied_url_paths: Vec::new().into_boxed_slice(),
             denied_url_paths_router: Router::new(),
             allow_private_ip_ranges: false,
             method_acl_default: false,
@@ -134,51 +126,6 @@ impl HttpAcl {
     /// Returns a new [`HttpAclBuilder`].
     pub fn builder() -> HttpAclBuilder {
         HttpAclBuilder::new()
-    }
-
-    /// Returns whether HTTP is allowed.
-    pub fn allow_http(&self) -> bool {
-        self.allow_http
-    }
-
-    /// Returns whether HTTPS is allowed.
-    pub fn allow_https(&self) -> bool {
-        self.allow_https
-    }
-
-    /// Returns whether private IP ranges are allowed.
-    pub fn allow_private_ip_ranges(&self) -> bool {
-        self.allow_private_ip_ranges
-    }
-
-    /// Returns the default action for HTTP methods if no ACL match is found.
-    pub fn method_acl_default(&self) -> bool {
-        self.method_acl_default
-    }
-
-    /// Returns the default action for hosts if no ACL match is found.
-    pub fn host_acl_default(&self) -> bool {
-        self.host_acl_default
-    }
-
-    /// Returns the default action for ports if no ACL match is found.
-    pub fn port_acl_default(&self) -> bool {
-        self.port_acl_default
-    }
-
-    /// Returns the default action for IPs if no ACL match is found.
-    pub fn ip_acl_default(&self) -> bool {
-        self.ip_acl_default
-    }
-
-    /// Returns the allowed methods.
-    pub fn allowed_methods(&self) -> &[HttpRequestMethod] {
-        &self.allowed_methods
-    }
-
-    /// Returns the denied methods.
-    pub fn denied_methods(&self) -> &[HttpRequestMethod] {
-        &self.denied_methods
     }
 
     /// Returns whether the scheme is allowed.
@@ -1136,17 +1083,7 @@ impl HttpAclBuilder {
             denied_port_ranges: self.denied_port_ranges.into_boxed_slice(),
             allowed_ip_ranges: self.allowed_ip_ranges.into_boxed_slice(),
             denied_ip_ranges: self.denied_ip_ranges.into_boxed_slice(),
-            allowed_url_paths: self
-                .allowed_url_paths
-                .into_iter()
-                .map(|x| x.into_boxed_str())
-                .collect(),
             allowed_url_paths_router: self.allowed_url_paths_router,
-            denied_url_paths: self
-                .denied_url_paths
-                .into_iter()
-                .map(|x| x.into_boxed_str())
-                .collect(),
             denied_url_paths_router: self.denied_url_paths_router,
             static_dns_mapping: self
                 .static_dns_mapping
