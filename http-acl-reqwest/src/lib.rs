@@ -173,10 +173,7 @@ impl HttpAclDnsResolver {
 impl Resolve for HttpAclDnsResolver {
     fn resolve(&self, name: Name) -> Resolving {
         if self.acl.is_host_allowed(name.as_str()).is_denied() {
-            let err: BoxError = Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Host denied by ACL",
-            ));
+            let err: BoxError = Box::new(std::io::Error::other("Host denied by ACL"));
             return Box::pin(future::ready(Err(err)));
         }
 
