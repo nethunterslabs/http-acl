@@ -645,8 +645,6 @@ impl HttpAclBuilder {
         for method in &methods {
             if self.denied_methods.contains(method) {
                 return Err(AddError::AlreadyDenied);
-            } else if self.allowed_methods.contains(method) {
-                return Err(AddError::AlreadyAllowed);
             }
         }
         self.allowed_methods = methods;
@@ -692,8 +690,6 @@ impl HttpAclBuilder {
         for method in &methods {
             if self.allowed_methods.contains(method) {
                 return Err(AddError::AlreadyAllowed);
-            } else if self.denied_methods.contains(method) {
-                return Err(AddError::AlreadyDenied);
             }
         }
         self.denied_methods = methods;
@@ -734,8 +730,6 @@ impl HttpAclBuilder {
             if utils::authority::is_valid_host(host) {
                 if self.denied_hosts.contains(host) {
                     return Err(AddError::AlreadyDenied);
-                } else if self.allowed_hosts.contains(host) {
-                    return Err(AddError::AlreadyAllowed);
                 }
             } else {
                 return Err(AddError::Invalid);
@@ -779,8 +773,6 @@ impl HttpAclBuilder {
             if utils::authority::is_valid_host(host) {
                 if self.allowed_hosts.contains(host) {
                     return Err(AddError::AlreadyAllowed);
-                } else if self.denied_hosts.contains(host) {
-                    return Err(AddError::AlreadyDenied);
                 }
             } else {
                 return Err(AddError::Invalid);
@@ -805,6 +797,10 @@ impl HttpAclBuilder {
             Err(AddError::AlreadyDenied)
         } else if self.allowed_port_ranges.contains(&port_range) {
             Err(AddError::AlreadyAllowed)
+        } else if utils::range_overlaps(&self.allowed_port_ranges, &port_range)
+            || utils::range_overlaps(&self.denied_port_ranges, &port_range)
+        {
+            Err(AddError::Invalid)
         } else {
             self.allowed_port_ranges.push(port_range);
             Ok(self)
@@ -825,8 +821,10 @@ impl HttpAclBuilder {
         for port_range in &port_ranges {
             if self.denied_port_ranges.contains(port_range) {
                 return Err(AddError::AlreadyDenied);
-            } else if self.allowed_port_ranges.contains(port_range) {
-                return Err(AddError::AlreadyAllowed);
+            } else if utils::range_overlaps(&port_ranges, port_range)
+                || utils::range_overlaps(&self.denied_port_ranges, port_range)
+            {
+                return Err(AddError::Invalid);
             }
         }
         self.allowed_port_ranges = port_ranges;
@@ -848,6 +846,10 @@ impl HttpAclBuilder {
             Err(AddError::AlreadyAllowed)
         } else if self.denied_port_ranges.contains(&port_range) {
             Err(AddError::AlreadyDenied)
+        } else if utils::range_overlaps(&self.allowed_port_ranges, &port_range)
+            || utils::range_overlaps(&self.denied_port_ranges, &port_range)
+        {
+            Err(AddError::Invalid)
         } else {
             self.denied_port_ranges.push(port_range);
             Ok(self)
@@ -868,8 +870,6 @@ impl HttpAclBuilder {
         for port_range in &port_ranges {
             if self.allowed_port_ranges.contains(port_range) {
                 return Err(AddError::AlreadyAllowed);
-            } else if self.denied_port_ranges.contains(port_range) {
-                return Err(AddError::AlreadyDenied);
             }
         }
         self.denied_port_ranges = port_ranges;
@@ -889,6 +889,10 @@ impl HttpAclBuilder {
             return Err(AddError::AlreadyDenied);
         } else if self.allowed_ip_ranges.contains(&ip_range) {
             return Err(AddError::AlreadyAllowed);
+        } else if utils::range_overlaps(&self.allowed_ip_ranges, &ip_range)
+            || utils::range_overlaps(&self.denied_ip_ranges, &ip_range)
+        {
+            return Err(AddError::Invalid);
         }
         self.allowed_ip_ranges.push(ip_range);
         Ok(self)
@@ -917,8 +921,10 @@ impl HttpAclBuilder {
         for ip_range in &ip_ranges {
             if self.denied_ip_ranges.contains(ip_range) {
                 return Err(AddError::AlreadyDenied);
-            } else if self.allowed_ip_ranges.contains(ip_range) {
-                return Err(AddError::AlreadyAllowed);
+            } else if utils::range_overlaps(&ip_ranges, ip_range)
+                || utils::range_overlaps(&self.denied_ip_ranges, ip_range)
+            {
+                return Err(AddError::Invalid);
             }
         }
         self.allowed_ip_ranges = ip_ranges;
@@ -966,8 +972,10 @@ impl HttpAclBuilder {
         for ip_range in &ip_ranges {
             if self.allowed_ip_ranges.contains(ip_range) {
                 return Err(AddError::AlreadyAllowed);
-            } else if self.denied_ip_ranges.contains(ip_range) {
-                return Err(AddError::AlreadyDenied);
+            } else if utils::range_overlaps(&self.allowed_ip_ranges, ip_range)
+                || utils::range_overlaps(&ip_ranges, ip_range)
+            {
+                return Err(AddError::Invalid);
             }
         }
         self.denied_ip_ranges = ip_ranges;
@@ -1051,8 +1059,6 @@ impl HttpAclBuilder {
         for header in headers.keys() {
             if self.denied_headers.contains_key(header) {
                 return Err(AddError::AlreadyDenied);
-            } else if self.allowed_headers.contains_key(header) {
-                return Err(AddError::AlreadyAllowed);
             }
         }
         self.allowed_headers = headers;
@@ -1095,8 +1101,6 @@ impl HttpAclBuilder {
         for header in headers.keys() {
             if self.allowed_headers.contains_key(header) {
                 return Err(AddError::AlreadyAllowed);
-            } else if self.denied_headers.contains_key(header) {
-                return Err(AddError::AlreadyDenied);
             }
         }
         self.denied_headers = headers;
@@ -1150,12 +1154,9 @@ impl HttpAclBuilder {
                 || self.denied_url_paths_router.at(url_path).is_ok()
             {
                 return Err(AddError::AlreadyDenied);
-            } else if self.allowed_url_paths.contains(url_path)
-                || self.allowed_url_paths_router.at(url_path).is_ok()
-            {
-                return Err(AddError::AlreadyAllowed);
             }
         }
+        self.allowed_url_paths_router = Router::new();
         for url_path in &url_paths {
             self.allowed_url_paths_router
                 .insert(url_path.clone(), ())
@@ -1213,12 +1214,9 @@ impl HttpAclBuilder {
                 || self.allowed_url_paths_router.at(url_path).is_ok()
             {
                 return Err(AddError::AlreadyAllowed);
-            } else if self.denied_url_paths.contains(url_path)
-                || self.denied_url_paths_router.at(url_path).is_ok()
-            {
-                return Err(AddError::AlreadyDenied);
             }
         }
+        self.denied_url_paths_router = Router::new();
         for url_path in &url_paths {
             self.denied_url_paths_router
                 .insert(url_path.clone(), ())
@@ -1333,6 +1331,10 @@ impl HttpAclBuilder {
         if !utils::has_unique_elements(&self.allowed_port_ranges) {
             return Err(AddError::AlreadyAllowed);
         }
+        // Check for overlapping allowed port ranges
+        if utils::has_overlapping_ranges(&self.allowed_port_ranges) {
+            return Err(AddError::Invalid);
+        }
         for port_range in &self.allowed_port_ranges {
             if self.denied_port_ranges.contains(port_range) {
                 return Err(AddError::AlreadyDenied);
@@ -1340,6 +1342,10 @@ impl HttpAclBuilder {
         }
         if !utils::has_unique_elements(&self.denied_port_ranges) {
             return Err(AddError::AlreadyDenied);
+        }
+        // Check for overlapping denied port ranges
+        if utils::has_overlapping_ranges(&self.denied_port_ranges) {
+            return Err(AddError::Invalid);
         }
         for port_range in &self.denied_port_ranges {
             if self.allowed_port_ranges.contains(port_range) {
@@ -1349,6 +1355,10 @@ impl HttpAclBuilder {
         if !utils::has_unique_elements(&self.allowed_ip_ranges) {
             return Err(AddError::AlreadyAllowed);
         }
+        // Check for overlapping allowed IP ranges
+        if utils::has_overlapping_ranges(&self.allowed_ip_ranges) {
+            return Err(AddError::Invalid);
+        }
         for ip_range in &self.allowed_ip_ranges {
             if self.denied_ip_ranges.contains(ip_range) {
                 return Err(AddError::AlreadyDenied);
@@ -1356,6 +1366,10 @@ impl HttpAclBuilder {
         }
         if !utils::has_unique_elements(&self.denied_ip_ranges) {
             return Err(AddError::AlreadyDenied);
+        }
+        // Check for overlapping denied IP ranges
+        if utils::has_overlapping_ranges(&self.denied_ip_ranges) {
+            return Err(AddError::Invalid);
         }
         for ip_range in &self.denied_ip_ranges {
             if self.allowed_ip_ranges.contains(ip_range) {
