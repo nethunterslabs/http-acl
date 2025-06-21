@@ -1289,7 +1289,7 @@ impl HttpAclBuilder {
 
     /// Builds the [`HttpAcl`] and returns an error if the configuration is invalid.
     /// This is used for deserialized ACLs as the URL Path Routers need to be built.
-    pub fn try_build(mut self) -> Result<HttpAcl, AddError> {
+    pub fn try_build_full(mut self, validate_fn: Option<ValidateFn>) -> Result<HttpAcl, AddError> {
         if !utils::has_unique_elements(&self.allowed_methods) {
             return Err(AddError::AlreadyAllowed);
         }
@@ -1416,6 +1416,12 @@ impl HttpAclBuilder {
                     .map_err(|_| AddError::Invalid)?;
             }
         }
-        Ok(self.build())
+        Ok(self.build_full(validate_fn))
+    }
+
+    /// Builds the [`HttpAcl`] and returns an error if the configuration is invalid.
+    /// This is used for deserialized ACLs as the URL Path Routers need to be built.
+    pub fn try_build(self) -> Result<HttpAcl, AddError> {
+        self.try_build_full(None)
     }
 }
