@@ -224,15 +224,17 @@ impl HttpAcl {
     pub fn is_header_allowed(&self, header_name: &str, header_value: &str) -> AclClassification {
         if let Some(allowed_value) = self.allowed_headers.get(header_name) {
             if allowed_value.as_deref() == Some(header_value) || allowed_value.is_none() {
-                return AclClassification::AllowedUserAcl;
+                AclClassification::AllowedUserAcl
+            } else {
+                AclClassification::DeniedUserAcl
             }
         } else if let Some(denied_value) = self.denied_headers.get(header_name) {
             if denied_value.as_deref() == Some(header_value) || denied_value.is_none() {
-                return AclClassification::DeniedUserAcl;
+                AclClassification::DeniedUserAcl
+            } else {
+                AclClassification::AllowedUserAcl
             }
-        }
-
-        if self.header_acl_default {
+        } else if self.header_acl_default {
             AclClassification::AllowedDefault
         } else {
             AclClassification::DeniedDefault
