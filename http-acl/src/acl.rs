@@ -1311,7 +1311,7 @@ impl HttpAclBuilder {
             return Err(AddError::AlreadyAllowed);
         }
         for host in &self.allowed_hosts {
-            if utils::authority::is_valid_host(host) {
+            if !utils::authority::is_valid_host(host) {
                 return Err(AddError::Invalid);
             }
             if self.denied_hosts.contains(host) {
@@ -1322,7 +1322,7 @@ impl HttpAclBuilder {
             return Err(AddError::AlreadyDenied);
         }
         for host in &self.denied_hosts {
-            if utils::authority::is_valid_host(host) {
+            if !utils::authority::is_valid_host(host) {
                 return Err(AddError::Invalid);
             }
             if self.allowed_hosts.contains(host) {
