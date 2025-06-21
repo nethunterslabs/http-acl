@@ -77,9 +77,9 @@ impl Middleware for HttpAclMiddleware {
             let authority = Authority::parse(host)
                 .map_err(|_| Error::Middleware(anyhow!("invalid host: {}", host)))?;
 
-            match authority.host {
+            match &authority.host {
                 Host::Ip(ip) => {
-                    let acl_ip_match = self.acl.is_ip_allowed(&ip);
+                    let acl_ip_match = self.acl.is_ip_allowed(ip);
                     if acl_ip_match.is_denied() {
                         return Err(Error::Middleware(anyhow!(
                             "ip {} is denied - {}",
@@ -89,7 +89,7 @@ impl Middleware for HttpAclMiddleware {
                     }
                 }
                 Host::Domain(domain) => {
-                    let acl_host_match = self.acl.is_host_allowed(&domain);
+                    let acl_host_match = self.acl.is_host_allowed(domain);
                     if acl_host_match.is_denied() {
                         return Err(Error::Middleware(anyhow!(
                             "host {} is denied - {}",
@@ -133,6 +133,21 @@ impl Middleware for HttpAclMiddleware {
                     "path {} is denied - {}",
                     req.url().path(),
                     acl_url_path_match
+                )));
+            }
+
+            let valid_match = self.acl.is_valid(
+                scheme,
+                &authority,
+                req.headers()
+                    .iter()
+                    .filter_map(|(k, v)| Some((k.as_str(), v.to_str().ok()?))),
+                req.body().and_then(|b| b.as_bytes()),
+            );
+            if valid_match.is_denied() {
+                return Err(Error::Middleware(anyhow!(
+                    "request is denied - {}",
+                    valid_match
                 )));
             }
 
