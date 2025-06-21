@@ -1291,129 +1291,193 @@ impl HttpAclBuilder {
     /// This is used for deserialized ACLs as the URL Path Routers need to be built.
     pub fn try_build_full(mut self, validate_fn: Option<ValidateFn>) -> Result<HttpAcl, AddError> {
         if !utils::has_unique_elements(&self.allowed_methods) {
-            return Err(AddError::AlreadyAllowed);
+            return Err(AddError::Error(
+                "Allowed methods must be unique.".to_string(),
+            ));
         }
         for method in &self.allowed_methods {
             if self.denied_methods.contains(method) {
-                return Err(AddError::AlreadyDenied);
+                return Err(AddError::Error(format!(
+                    "Method `{}` is both allowed and denied.",
+                    method.as_str()
+                )));
             }
         }
         if !utils::has_unique_elements(&self.denied_methods) {
-            return Err(AddError::AlreadyDenied);
+            return Err(AddError::Error(
+                "Denied methods must be unique.".to_string(),
+            ));
         }
         for method in &self.denied_methods {
             if self.allowed_methods.contains(method) {
-                return Err(AddError::AlreadyAllowed);
+                return Err(AddError::Error(format!(
+                    "Method `{}` is both allowed and denied.",
+                    method.as_str()
+                )));
             }
         }
         if !utils::has_unique_elements(&self.allowed_hosts) {
-            return Err(AddError::AlreadyAllowed);
+            return Err(AddError::Error("Allowed hosts must be unique.".to_string()));
         }
         for host in &self.allowed_hosts {
             if !utils::authority::is_valid_host(host) {
-                return Err(AddError::Invalid);
+                return Err(AddError::Error(format!(
+                    "Host `{}` is invalid.",
+                    host.as_str()
+                )));
             }
             if self.denied_hosts.contains(host) {
-                return Err(AddError::AlreadyDenied);
+                return Err(AddError::Error(format!(
+                    "Host `{}` is both allowed and denied.",
+                    host.as_str()
+                )));
             }
         }
         if !utils::has_unique_elements(&self.denied_hosts) {
-            return Err(AddError::AlreadyDenied);
+            return Err(AddError::Error("Denied hosts must be unique.".to_string()));
         }
         for host in &self.denied_hosts {
             if !utils::authority::is_valid_host(host) {
-                return Err(AddError::Invalid);
+                return Err(AddError::Error(format!(
+                    "Host `{}` is invalid.",
+                    host.as_str()
+                )));
             }
             if self.allowed_hosts.contains(host) {
-                return Err(AddError::AlreadyAllowed);
+                return Err(AddError::Error(format!(
+                    "Host `{}` is both allowed and denied.",
+                    host.as_str()
+                )));
             }
         }
         if !utils::has_unique_elements(&self.allowed_port_ranges) {
-            return Err(AddError::AlreadyAllowed);
+            return Err(AddError::Error(
+                "Allowed port ranges must be unique.".to_string(),
+            ));
         }
-        // Check for overlapping allowed port ranges
         if utils::has_overlapping_ranges(&self.allowed_port_ranges) {
-            return Err(AddError::Invalid);
+            return Err(AddError::Error(
+                "Allowed port ranges must not overlap.".to_string(),
+            ));
         }
         for port_range in &self.allowed_port_ranges {
             if self.denied_port_ranges.contains(port_range) {
-                return Err(AddError::AlreadyDenied);
+                return Err(AddError::Error(format!(
+                    "Port range `{}` is both allowed and denied.",
+                    port_range.start()
+                )));
             }
         }
         if !utils::has_unique_elements(&self.denied_port_ranges) {
-            return Err(AddError::AlreadyDenied);
+            return Err(AddError::Error(
+                "Denied port ranges must be unique.".to_string(),
+            ));
         }
-        // Check for overlapping denied port ranges
         if utils::has_overlapping_ranges(&self.denied_port_ranges) {
-            return Err(AddError::Invalid);
+            return Err(AddError::Error(
+                "Denied port ranges must not overlap.".to_string(),
+            ));
         }
         for port_range in &self.denied_port_ranges {
             if self.allowed_port_ranges.contains(port_range) {
-                return Err(AddError::AlreadyAllowed);
+                return Err(AddError::Error(format!(
+                    "Port range `{}` is both allowed and denied.",
+                    port_range.start()
+                )));
             }
         }
         if !utils::has_unique_elements(&self.allowed_ip_ranges) {
-            return Err(AddError::AlreadyAllowed);
+            return Err(AddError::Error(
+                "Allowed IP ranges must be unique.".to_string(),
+            ));
         }
-        // Check for overlapping allowed IP ranges
         if utils::has_overlapping_ranges(&self.allowed_ip_ranges) {
-            return Err(AddError::Invalid);
+            return Err(AddError::Error(
+                "Allowed IP ranges must not overlap.".to_string(),
+            ));
         }
         for ip_range in &self.allowed_ip_ranges {
             if self.denied_ip_ranges.contains(ip_range) {
-                return Err(AddError::AlreadyDenied);
+                return Err(AddError::Error(format!(
+                    "IP range `{}` is both allowed and denied.",
+                    ip_range.start()
+                )));
             }
         }
         if !utils::has_unique_elements(&self.denied_ip_ranges) {
-            return Err(AddError::AlreadyDenied);
+            return Err(AddError::Error(
+                "Denied IP ranges must be unique.".to_string(),
+            ));
         }
-        // Check for overlapping denied IP ranges
         if utils::has_overlapping_ranges(&self.denied_ip_ranges) {
-            return Err(AddError::Invalid);
+            return Err(AddError::Error(
+                "Denied IP ranges must not overlap.".to_string(),
+            ));
         }
         for ip_range in &self.denied_ip_ranges {
             if self.allowed_ip_ranges.contains(ip_range) {
-                return Err(AddError::AlreadyAllowed);
+                return Err(AddError::Error(format!(
+                    "IP range `{}` is both allowed and denied.",
+                    ip_range.start()
+                )));
             }
         }
         if !utils::has_unique_elements(&self.static_dns_mapping) {
-            return Err(AddError::AlreadyAllowed);
+            return Err(AddError::Error(
+                "Static DNS mapping must be unique.".to_string(),
+            ));
         }
         for host in self.static_dns_mapping.keys() {
             if !utils::authority::is_valid_host(host) {
-                return Err(AddError::Invalid);
+                return Err(AddError::Error(format!(
+                    "Host `{}` is invalid.",
+                    host.as_str()
+                )));
             }
         }
         if !utils::has_unique_elements(&self.allowed_url_paths) {
-            return Err(AddError::AlreadyAllowed);
+            return Err(AddError::Error(
+                "Allowed URL paths must be unique.".to_string(),
+            ));
         }
         for url_path in &self.allowed_url_paths {
             if self.denied_url_paths.contains(url_path)
                 || self.denied_url_paths_router.at(url_path).is_ok()
             {
-                return Err(AddError::AlreadyDenied);
-            } else if self.allowed_url_paths_router.at(url_path).is_ok() {
-                return Err(AddError::AlreadyAllowed);
-            } else {
+                return Err(AddError::Error(format!(
+                    "URL path `{}` is both allowed and denied.",
+                    url_path
+                )));
+            } else if self.allowed_url_paths_router.at(url_path).is_err() {
                 self.allowed_url_paths_router
                     .insert(url_path.clone(), ())
-                    .map_err(|_| AddError::Invalid)?;
+                    .map_err(|_| {
+                        AddError::Error(format!(
+                            "Failed to insert allowed URL path `{}`.",
+                            url_path
+                        ))
+                    })?;
             }
         }
         if !utils::has_unique_elements(&self.denied_url_paths) {
-            return Err(AddError::AlreadyDenied);
+            return Err(AddError::Error(
+                "Denied URL paths must be unique.".to_string(),
+            ));
         }
         for url_path in &self.denied_url_paths {
             if self.allowed_url_paths.contains(url_path)
                 || self.allowed_url_paths_router.at(url_path).is_ok()
             {
-                return Err(AddError::AlreadyAllowed);
-            } else if self.denied_url_paths_router.at(url_path).is_ok() {
-                return Err(AddError::AlreadyDenied);
-            } else {
+                return Err(AddError::Error(format!(
+                    "URL path `{}` is both allowed and denied.",
+                    url_path
+                )));
+            } else if self.denied_url_paths_router.at(url_path).is_err() {
                 self.denied_url_paths_router
                     .insert(url_path.clone(), ())
-                    .map_err(|_| AddError::Invalid)?;
+                    .map_err(|_| {
+                        AddError::Error(format!("Failed to insert denied URL path `{}`.", url_path))
+                    })?;
             }
         }
         Ok(self.build_full(validate_fn))

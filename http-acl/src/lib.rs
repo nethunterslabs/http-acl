@@ -36,7 +36,8 @@ mod tests {
             .unwrap()
             .add_denied_ip_range("9.0.0.0/8".parse::<IpNet>().unwrap())
             .unwrap()
-            .build();
+            .try_build()
+            .unwrap();
 
         assert!(acl.is_host_allowed("example.com").is_allowed());
         assert!(acl.is_host_allowed("example.org").is_allowed());
@@ -60,7 +61,8 @@ mod tests {
             .unwrap()
             .add_denied_host("example.net".to_string())
             .unwrap()
-            .build();
+            .try_build()
+            .unwrap();
 
         assert!(acl.is_host_allowed("example.com").is_allowed());
         assert!(acl.is_host_allowed("example.org").is_allowed());
@@ -73,12 +75,18 @@ mod tests {
             .clear_allowed_port_ranges()
             .add_allowed_port_range(8080..=8080)
             .unwrap()
-            .add_denied_port_range(8443..=8443)
+            .add_denied_port_range(8441..=8443)
             .unwrap()
-            .build();
+            .try_build()
+            .unwrap();
 
+        assert!(acl.is_port_allowed(80).is_denied());
         assert!(acl.is_port_allowed(8080).is_allowed());
+        assert!(acl.is_port_allowed(8440).is_denied());
+        assert!(!acl.is_port_allowed(8441).is_allowed());
+        assert!(!acl.is_port_allowed(8442).is_allowed());
         assert!(!acl.is_port_allowed(8443).is_allowed());
+        assert!(acl.is_port_allowed(8444).is_denied());
     }
 
     #[test]
@@ -89,7 +97,8 @@ mod tests {
             .unwrap()
             .add_denied_ip_range("9.0.0.0/8".parse::<IpNet>().unwrap())
             .unwrap()
-            .build();
+            .try_build()
+            .unwrap();
 
         assert!(acl.is_ip_allowed(&"1.1.1.1".parse().unwrap()).is_allowed());
         assert!(acl.is_ip_allowed(&"9.9.9.9".parse().unwrap()).is_denied());
@@ -104,7 +113,8 @@ mod tests {
         let acl = HttpAclBuilder::new()
             .private_ip_ranges(true)
             .ip_acl_default(true)
-            .build();
+            .try_build()
+            .unwrap();
 
         assert!(
             acl.is_ip_allowed(&"192.168.1.1".parse().unwrap())
@@ -114,7 +124,7 @@ mod tests {
 
     #[test]
     fn default_ip_acl() {
-        let acl = HttpAclBuilder::new().build();
+        let acl = HttpAclBuilder::new().try_build().unwrap();
 
         assert!(
             acl.is_ip_allowed(&"192.168.1.1".parse().unwrap())
@@ -135,7 +145,8 @@ mod tests {
             .unwrap()
             .add_denied_url_path("/denied/{*path}".to_string())
             .unwrap()
-            .build();
+            .try_build()
+            .unwrap();
 
         assert!(acl.is_url_path_allowed("/allowed").is_allowed());
         assert!(acl.is_url_path_allowed("/allowed/allowed").is_allowed());
@@ -155,7 +166,8 @@ mod tests {
             .unwrap()
             .add_denied_header("X-Denied2".to_string(), None)
             .unwrap()
-            .build();
+            .try_build()
+            .unwrap();
 
         assert!(acl.is_header_allowed("X-Allowed", "true").is_allowed());
         assert!(acl.is_header_allowed("X-Allowed2", "false").is_allowed());
@@ -165,8 +177,8 @@ mod tests {
 
     #[test]
     fn valid_acl() {
-        let acl =
-            HttpAclBuilder::new().build_full(Some(Arc::new(|scheme, authority, headers, body| {
+        let acl = HttpAclBuilder::new()
+            .try_build_full(Some(Arc::new(|scheme, authority, headers, body| {
                 if scheme == "http" {
                     return AclClassification::DeniedUserAcl;
                 }
@@ -188,7 +200,8 @@ mod tests {
                 }
 
                 AclClassification::AllowedDefault
-            })));
+            })))
+            .unwrap();
 
         assert!(
             acl.is_valid(

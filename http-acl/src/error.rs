@@ -15,4 +15,7 @@ pub enum AddError {
     /// The entity is not allowed or denied because it is invalid.
     #[error("The entity is not allowed or denied because it is invalid.")]
     Invalid,
+    /// General error with a message.
+    #[error("Error: {0}")]
+    Error(String),
 }
