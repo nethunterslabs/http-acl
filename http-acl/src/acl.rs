@@ -299,15 +299,15 @@ impl HttpAcl {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum AclClassification {
-    /// The entiy is allowed according to the allowed ACL.
+    /// The entity is allowed according to the allowed ACL.
     AllowedUserAcl,
     /// The entity is allowed because the default is to allow if no ACL match is found.
     AllowedDefault,
-    /// The entiy is denied according to the denied ACL.
+    /// The entity is denied according to the denied ACL.
     DeniedUserAcl,
     /// The entity is denied because the default is to deny if no ACL match is found.
     DeniedDefault,
-    /// The entiy is denied.
+    /// The entity is denied.
     Denied(String),
     /// The IP is denied because it is not global.
     DeniedNotGlobal,
@@ -319,14 +319,14 @@ impl std::fmt::Display for AclClassification {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AclClassification::AllowedUserAcl => {
-                write!(f, "The entiy is allowed according to the allowed ACL.")
+                write!(f, "The entity is allowed according to the allowed ACL.")
             }
             AclClassification::AllowedDefault => write!(
                 f,
                 "The entity is allowed because the default is to allow if no ACL match is found."
             ),
             AclClassification::DeniedUserAcl => {
-                write!(f, "The entiy is denied according to the denied ACL.")
+                write!(f, "The entity is denied according to the denied ACL.")
             }
             AclClassification::DeniedNotGlobal => {
                 write!(f, "The ip is denied because it is not global.")
@@ -339,7 +339,7 @@ impl std::fmt::Display for AclClassification {
                 "The entity is denied because the default is to deny if no ACL match is found."
             ),
             AclClassification::Denied(reason) => {
-                write!(f, "The entiy is denied because {}.", reason)
+                write!(f, "The entity is denied because {}.", reason)
             }
         }
     }

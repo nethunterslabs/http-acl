@@ -274,7 +274,7 @@ mod tests {
         assert!(request.is_err());
         assert_eq!(
             request.unwrap_err().to_string(),
-            "host example.com is denied - The entiy is denied according to the denied ACL."
+            "host example.com is denied - The entity is denied according to the denied ACL."
         );
     }
 }
