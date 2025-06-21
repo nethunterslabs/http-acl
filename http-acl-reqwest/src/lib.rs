@@ -197,20 +197,25 @@ impl Resolve for HttpAclDnsResolver {
         let resolver = self.dns_resolver.clone();
 
         Box::pin(async move {
-            let resolved = resolver.resolve(name).await;
-            match resolved {
-                Ok(addresses) => {
-                    let filtered = addresses
-                        .into_iter()
-                        .filter(|addr| {
-                            acl.is_ip_allowed(&addr.ip()).is_allowed()
-                                && acl.is_port_allowed(addr.port()).is_allowed()
-                        })
-                        .collect::<Vec<_>>();
-                    Ok(Box::new(filtered.into_iter())
-                        as Box<dyn Iterator<Item = SocketAddr> + Send>)
+            if let Some(tcp_address) = acl.resolve_static_dns_mapping(name.as_str()) {
+                Ok(Box::new(std::iter::once(tcp_address))
+                    as Box<dyn Iterator<Item = SocketAddr> + Send>)
+            } else {
+                let resolved = resolver.resolve(name).await;
+                match resolved {
+                    Ok(addresses) => {
+                        let filtered = addresses
+                            .into_iter()
+                            .filter(|addr| {
+                                acl.is_ip_allowed(&addr.ip()).is_allowed()
+                                    && acl.is_port_allowed(addr.port()).is_allowed()
+                            })
+                            .collect::<Vec<_>>();
+                        Ok(Box::new(filtered.into_iter())
+                            as Box<dyn Iterator<Item = SocketAddr> + Send>)
+                    }
+                    Err(e) => Err(e),
                 }
-                Err(e) => Err(e),
             }
         })
     }
