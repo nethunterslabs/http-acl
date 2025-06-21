@@ -139,4 +139,23 @@ mod tests {
         assert!(acl.is_url_path_allowed("/denied/denied").is_denied());
         assert!(acl.is_url_path_allowed("/denied/denied/denied").is_denied());
     }
+
+    #[test]
+    fn header_acl() {
+        let acl = HttpAclBuilder::new()
+            .add_allowed_header("X-Allowed".to_string(), Some("true".to_string()))
+            .unwrap()
+            .add_allowed_header("X-Allowed2".to_string(), None)
+            .unwrap()
+            .add_denied_header("X-Denied".to_string(), Some("true".to_string()))
+            .unwrap()
+            .add_denied_header("X-Denied2".to_string(), None)
+            .unwrap()
+            .build();
+
+        assert!(acl.is_header_allowed("X-Allowed", "true").is_allowed());
+        assert!(acl.is_header_allowed("X-Allowed2", "false").is_allowed());
+        assert!(acl.is_header_allowed("X-Denied", "true").is_denied());
+        assert!(acl.is_header_allowed("X-Denied2", "false").is_denied());
+    }
 }
