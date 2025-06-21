@@ -111,6 +111,22 @@ impl Middleware for HttpAclMiddleware {
                 }
             }
 
+            for (key, value) in req.headers() {
+                let header_name = key.as_str();
+                let header_value = value.to_str().map_err(|_| {
+                    Error::Middleware(anyhow!("invalid header value for {}", header_name))
+                })?;
+                let acl_header_match = self.acl.is_header_allowed(header_name, header_value);
+                if acl_header_match.is_denied() {
+                    return Err(Error::Middleware(anyhow!(
+                        "header {}: {} is denied - {}",
+                        header_name,
+                        header_value,
+                        acl_header_match
+                    )));
+                }
+            }
+
             let acl_url_path_match = self.acl.is_url_path_allowed(req.url().path());
             if acl_url_path_match.is_denied() {
                 return Err(Error::Middleware(anyhow!(
