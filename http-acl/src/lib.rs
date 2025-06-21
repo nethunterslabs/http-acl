@@ -165,18 +165,6 @@ mod tests {
 
     #[test]
     fn valid_acl() {
-        /*
-                pub type ValidateFn = Arc<
-            dyn for<'h> Fn(
-                    &str,
-                    &Authority,
-                    Box<dyn Iterator<Item = (&'h str, &'h str)> + Send + Sync + 'h>,
-                    Option<&[u8]>,
-                ) -> AclClassification
-                + Send
-                + Sync,
-        >;
-                 */
         let acl =
             HttpAclBuilder::new().build_full(Some(Arc::new(|scheme, authority, headers, body| {
                 if scheme == "http" {
