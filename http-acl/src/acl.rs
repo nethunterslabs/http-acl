@@ -32,6 +32,8 @@ pub struct HttpAcl {
     allowed_ip_ranges: Box<[RangeInclusive<IpAddr>]>,
     denied_ip_ranges: Box<[RangeInclusive<IpAddr>]>,
     static_dns_mapping: HashMap<Box<str>, SocketAddr>,
+    allowed_headers: HashMap<Box<str>, Option<Box<str>>>,
+    denied_headers: HashMap<Box<str>, Option<Box<str>>>,
     allowed_url_paths_router: Router<()>,
     denied_url_paths_router: Router<()>,
     allow_private_ip_ranges: bool,
@@ -39,6 +41,7 @@ pub struct HttpAcl {
     host_acl_default: bool,
     port_acl_default: bool,
     ip_acl_default: bool,
+    header_acl_default: bool,
     url_path_acl_default: bool,
 }
 
@@ -56,11 +59,14 @@ impl std::fmt::Debug for HttpAcl {
             .field("allowed_ip_ranges", &self.allowed_ip_ranges)
             .field("denied_ip_ranges", &self.denied_ip_ranges)
             .field("static_dns_mapping", &self.static_dns_mapping)
+            .field("allowed_headers", &self.allowed_headers)
+            .field("denied_headers", &self.denied_headers)
             .field("allow_private_ip_ranges", &self.allow_private_ip_ranges)
             .field("method_acl_default", &self.method_acl_default)
             .field("host_acl_default", &self.host_acl_default)
             .field("port_acl_default", &self.port_acl_default)
             .field("ip_acl_default", &self.ip_acl_default)
+            .field("header_acl_default", &self.header_acl_default)
             .field("url_path_acl_default", &self.url_path_acl_default)
             .finish()
     }
@@ -79,11 +85,14 @@ impl PartialEq for HttpAcl {
             && self.allowed_ip_ranges == other.allowed_ip_ranges
             && self.denied_ip_ranges == other.denied_ip_ranges
             && self.static_dns_mapping == other.static_dns_mapping
+            && self.allowed_headers == other.allowed_headers
+            && self.denied_headers == other.denied_headers
             && self.allow_private_ip_ranges == other.allow_private_ip_ranges
             && self.method_acl_default == other.method_acl_default
             && self.host_acl_default == other.host_acl_default
             && self.port_acl_default == other.port_acl_default
             && self.ip_acl_default == other.ip_acl_default
+            && self.header_acl_default == other.header_acl_default
             && self.url_path_acl_default == other.url_path_acl_default
     }
 }
@@ -113,6 +122,8 @@ impl std::default::Default for HttpAcl {
             allowed_ip_ranges: Vec::new().into_boxed_slice(),
             denied_ip_ranges: Vec::new().into_boxed_slice(),
             static_dns_mapping: HashMap::new(),
+            allowed_headers: HashMap::new(),
+            denied_headers: HashMap::new(),
             allowed_url_paths_router: Router::new(),
             denied_url_paths_router: Router::new(),
             allow_private_ip_ranges: false,
@@ -120,6 +131,7 @@ impl std::default::Default for HttpAcl {
             host_acl_default: false,
             port_acl_default: false,
             ip_acl_default: false,
+            header_acl_default: false,
             url_path_acl_default: true,
         }
     }
@@ -206,6 +218,25 @@ impl HttpAcl {
     /// Resolve static DNS mapping.
     pub fn resolve_static_dns_mapping(&self, host: &str) -> Option<SocketAddr> {
         self.static_dns_mapping.get(host).copied()
+    }
+
+    /// Returns whether a header is allowed.
+    pub fn is_header_allowed(&self, header_name: &str, header_value: &str) -> AclClassification {
+        if let Some(allowed_value) = self.allowed_headers.get(header_name) {
+            if allowed_value.as_deref() == Some(header_value) || allowed_value.is_none() {
+                return AclClassification::AllowedUserAcl;
+            }
+        } else if let Some(denied_value) = self.denied_headers.get(header_name) {
+            if denied_value.as_deref() == Some(header_value) || denied_value.is_none() {
+                return AclClassification::DeniedUserAcl;
+            }
+        }
+
+        if self.header_acl_default {
+            AclClassification::AllowedDefault
+        } else {
+            AclClassification::DeniedDefault
+        }
     }
 
     /// Returns whether a URL path is allowed.
@@ -380,6 +411,8 @@ pub struct HttpAclBuilder {
     allowed_ip_ranges: Vec<RangeInclusive<IpAddr>>,
     denied_ip_ranges: Vec<RangeInclusive<IpAddr>>,
     static_dns_mapping: HashMap<String, SocketAddr>,
+    allowed_headers: HashMap<String, Option<String>>,
+    denied_headers: HashMap<String, Option<String>>,
     allowed_url_paths: Vec<String>,
     #[cfg_attr(feature = "serde", serde(skip))]
     allowed_url_paths_router: Router<()>,
@@ -391,6 +424,7 @@ pub struct HttpAclBuilder {
     host_acl_default: bool,
     port_acl_default: bool,
     ip_acl_default: bool,
+    header_acl_default: bool,
     url_path_acl_default: bool,
 }
 
@@ -408,6 +442,8 @@ impl std::fmt::Debug for HttpAclBuilder {
             .field("allowed_ip_ranges", &self.allowed_ip_ranges)
             .field("denied_ip_ranges", &self.denied_ip_ranges)
             .field("static_dns_mapping", &self.static_dns_mapping)
+            .field("allowed_headers", &self.allowed_headers)
+            .field("denied_headers", &self.denied_headers)
             .field("allowed_url_paths", &self.allowed_url_paths)
             .field("denied_url_paths", &self.denied_url_paths)
             .field("allow_private_ip_ranges", &self.allow_private_ip_ranges)
@@ -415,6 +451,7 @@ impl std::fmt::Debug for HttpAclBuilder {
             .field("host_acl_default", &self.host_acl_default)
             .field("port_acl_default", &self.port_acl_default)
             .field("ip_acl_default", &self.ip_acl_default)
+            .field("header_acl_default", &self.header_acl_default)
             .field("url_path_acl_default", &self.url_path_acl_default)
             .finish()
     }
@@ -433,6 +470,8 @@ impl PartialEq for HttpAclBuilder {
             && self.allowed_ip_ranges == other.allowed_ip_ranges
             && self.denied_ip_ranges == other.denied_ip_ranges
             && self.static_dns_mapping == other.static_dns_mapping
+            && self.allowed_headers == other.allowed_headers
+            && self.denied_headers == other.denied_headers
             && self.allowed_url_paths == other.allowed_url_paths
             && self.denied_url_paths == other.denied_url_paths
             && self.allow_private_ip_ranges == other.allow_private_ip_ranges
@@ -440,6 +479,7 @@ impl PartialEq for HttpAclBuilder {
             && self.host_acl_default == other.host_acl_default
             && self.port_acl_default == other.port_acl_default
             && self.ip_acl_default == other.ip_acl_default
+            && self.header_acl_default == other.header_acl_default
             && self.url_path_acl_default == other.url_path_acl_default
     }
 }
@@ -468,6 +508,8 @@ impl HttpAclBuilder {
             denied_port_ranges: Vec::new(),
             allowed_ip_ranges: Vec::new(),
             denied_ip_ranges: Vec::new(),
+            allowed_headers: HashMap::new(),
+            denied_headers: HashMap::new(),
             allowed_url_paths: Vec::new(),
             allowed_url_paths_router: Router::new(),
             denied_url_paths: Vec::new(),
@@ -478,6 +520,7 @@ impl HttpAclBuilder {
             host_acl_default: false,
             port_acl_default: false,
             ip_acl_default: false,
+            header_acl_default: false,
             url_path_acl_default: true,
         }
     }
@@ -521,6 +564,12 @@ impl HttpAclBuilder {
     /// Set default action for IPs if no ACL match is found.
     pub fn ip_acl_default(mut self, allow: bool) -> Self {
         self.ip_acl_default = allow;
+        self
+    }
+
+    /// Set default action for headers if no ACL match is found.
+    pub fn header_acl_default(mut self, allow: bool) -> Self {
+        self.header_acl_default = allow;
         self
     }
 
@@ -939,6 +988,98 @@ impl HttpAclBuilder {
         self
     }
 
+    /// Adds a header to the allowed headers.
+    pub fn add_allowed_header(
+        mut self,
+        header: String,
+        value: Option<String>,
+    ) -> Result<Self, AddError> {
+        if self.denied_headers.contains_key(&header) {
+            Err(AddError::AlreadyDenied)
+        } else if let std::collections::hash_map::Entry::Vacant(e) =
+            self.allowed_headers.entry(header)
+        {
+            e.insert(value);
+            Ok(self)
+        } else {
+            Err(AddError::AlreadyAllowed)
+        }
+    }
+
+    /// Removes a header from the allowed headers.
+    pub fn remove_allowed_header(mut self, header: &str) -> Self {
+        self.allowed_headers.remove(header);
+        self
+    }
+
+    /// Sets the allowed headers.
+    pub fn allowed_headers(
+        mut self,
+        headers: HashMap<String, Option<String>>,
+    ) -> Result<Self, AddError> {
+        for header in headers.keys() {
+            if self.denied_headers.contains_key(header) {
+                return Err(AddError::AlreadyDenied);
+            } else if self.allowed_headers.contains_key(header) {
+                return Err(AddError::AlreadyAllowed);
+            }
+        }
+        self.allowed_headers = headers;
+        Ok(self)
+    }
+
+    /// Clears the allowed headers.
+    pub fn clear_allowed_headers(mut self) -> Self {
+        self.allowed_headers.clear();
+        self
+    }
+
+    /// Adds a header to the denied headers.
+    pub fn add_denied_header(
+        mut self,
+        header: String,
+        value: Option<String>,
+    ) -> Result<Self, AddError> {
+        if self.allowed_headers.contains_key(&header) {
+            Err(AddError::AlreadyAllowed)
+        } else if let std::collections::hash_map::Entry::Vacant(e) =
+            self.denied_headers.entry(header)
+        {
+            e.insert(value);
+            Ok(self)
+        } else {
+            Err(AddError::AlreadyDenied)
+        }
+    }
+
+    /// Removes a header from the denied headers.
+    pub fn remove_denied_header(mut self, header: &str) -> Self {
+        self.denied_headers.remove(header);
+        self
+    }
+
+    /// Sets the denied headers.
+    pub fn denied_headers(
+        mut self,
+        headers: HashMap<String, Option<String>>,
+    ) -> Result<Self, AddError> {
+        for header in headers.keys() {
+            if self.allowed_headers.contains_key(header) {
+                return Err(AddError::AlreadyAllowed);
+            } else if self.denied_headers.contains_key(header) {
+                return Err(AddError::AlreadyDenied);
+            }
+        }
+        self.denied_headers = headers;
+        Ok(self)
+    }
+
+    /// Clears the denied headers.
+    pub fn clear_denied_headers(mut self) -> Self {
+        self.denied_headers.clear();
+        self
+    }
+
     /// Adds a URL path to the allowed URL paths.
     pub fn add_allowed_url_path(mut self, url_path: String) -> Result<Self, AddError> {
         if self.denied_url_paths.contains(&url_path)
@@ -1086,6 +1227,16 @@ impl HttpAclBuilder {
             denied_port_ranges: self.denied_port_ranges.into_boxed_slice(),
             allowed_ip_ranges: self.allowed_ip_ranges.into_boxed_slice(),
             denied_ip_ranges: self.denied_ip_ranges.into_boxed_slice(),
+            allowed_headers: self
+                .allowed_headers
+                .into_iter()
+                .map(|(k, v)| (k.into_boxed_str(), v.map(|s| s.into_boxed_str())))
+                .collect(),
+            denied_headers: self
+                .denied_headers
+                .into_iter()
+                .map(|(k, v)| (k.into_boxed_str(), v.map(|s| s.into_boxed_str())))
+                .collect(),
             allowed_url_paths_router: self.allowed_url_paths_router,
             denied_url_paths_router: self.denied_url_paths_router,
             static_dns_mapping: self
@@ -1098,6 +1249,7 @@ impl HttpAclBuilder {
             host_acl_default: self.host_acl_default,
             port_acl_default: self.port_acl_default,
             ip_acl_default: self.ip_acl_default,
+            header_acl_default: self.header_acl_default,
             url_path_acl_default: self.url_path_acl_default,
         }
     }
