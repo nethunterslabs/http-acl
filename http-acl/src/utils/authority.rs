@@ -1,9 +1,11 @@
 //! Utilities for parsing authorities.
 
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+
 /// Checks if a host is valid or if it is a valid IP address.
 pub fn is_valid_host(host: &str) -> bool {
     host.parse::<std::net::SocketAddr>().is_ok()
-        || host.parse::<std::net::IpAddr>().is_ok()
+        || host.parse::<IpAddr>().is_ok()
         || url::Host::parse(host).is_ok()
 }
 
@@ -26,13 +28,136 @@ impl std::fmt::Display for Authority {
     }
 }
 
+impl From<SocketAddr> for Authority {
+    fn from(value: SocketAddr) -> Self {
+        Authority {
+            host: match value {
+                SocketAddr::V4(addr) => Host::Ip(IpAddr::V4(*addr.ip())),
+                SocketAddr::V6(addr) => Host::Ip(IpAddr::V6(*addr.ip())),
+            },
+            port: value.port(),
+        }
+    }
+}
+
+impl From<SocketAddrV4> for Authority {
+    fn from(value: SocketAddrV4) -> Self {
+        Authority {
+            host: Host::Ip(IpAddr::V4(*value.ip())),
+            port: value.port(),
+        }
+    }
+}
+
+impl From<SocketAddrV6> for Authority {
+    fn from(value: SocketAddrV6) -> Self {
+        Authority {
+            host: Host::Ip(IpAddr::V6(*value.ip())),
+            port: value.port(),
+        }
+    }
+}
+
+impl From<(String, u16)> for Authority {
+    fn from(value: (String, u16)) -> Self {
+        Authority {
+            host: Host::Domain(value.0),
+            port: value.1,
+        }
+    }
+}
+
+impl From<(&str, u16)> for Authority {
+    fn from(value: (&str, u16)) -> Self {
+        Authority {
+            host: Host::Domain(value.0.to_string()),
+            port: value.1,
+        }
+    }
+}
+
+impl From<(IpAddr, u16)> for Authority {
+    fn from(value: (IpAddr, u16)) -> Self {
+        Authority {
+            host: Host::Ip(value.0),
+            port: value.1,
+        }
+    }
+}
+
+impl From<(Ipv4Addr, u16)> for Authority {
+    fn from(value: (Ipv4Addr, u16)) -> Self {
+        Authority {
+            host: Host::Ip(IpAddr::V4(value.0)),
+            port: value.1,
+        }
+    }
+}
+
+impl From<String> for Authority {
+    fn from(value: String) -> Self {
+        Authority {
+            host: Host::Domain(value),
+            port: 0,
+        }
+    }
+}
+
+impl From<&str> for Authority {
+    fn from(value: &str) -> Self {
+        Authority {
+            host: Host::Domain(value.to_string()),
+            port: 0,
+        }
+    }
+}
+
+impl From<IpAddr> for Authority {
+    fn from(value: IpAddr) -> Self {
+        Authority {
+            host: Host::Ip(value),
+            port: 0,
+        }
+    }
+}
+
+impl From<Ipv4Addr> for Authority {
+    fn from(value: Ipv4Addr) -> Self {
+        Authority {
+            host: Host::Ip(IpAddr::V4(value)),
+            port: 0,
+        }
+    }
+}
+
+impl From<Ipv6Addr> for Authority {
+    fn from(value: Ipv6Addr) -> Self {
+        Authority {
+            host: Host::Ip(IpAddr::V6(value)),
+            port: 0,
+        }
+    }
+}
+
 /// Represents a parsed host.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Host {
     /// A domain.
     Domain(String),
     /// An IP address.
-    Ip(std::net::IpAddr),
+    Ip(IpAddr),
+}
+
+impl Host {
+    /// Returns true if the host is an IP address.
+    pub fn is_ip(&self) -> bool {
+        matches!(self, Host::Ip(_))
+    }
+
+    /// Returns true if the host is a domain.
+    pub fn is_domain(&self) -> bool {
+        matches!(self, Host::Domain(_))
+    }
 }
 
 impl std::fmt::Display for Host {
@@ -40,10 +165,40 @@ impl std::fmt::Display for Host {
         match self {
             Host::Domain(domain) => write!(f, "{}", domain),
             Host::Ip(ip) => match ip {
-                std::net::IpAddr::V4(ip) => write!(f, "{}", ip),
-                std::net::IpAddr::V6(ip) => write!(f, "[{}]", ip),
+                IpAddr::V4(ip) => write!(f, "{}", ip),
+                IpAddr::V6(ip) => write!(f, "[{}]", ip),
             },
         }
+    }
+}
+
+impl From<String> for Host {
+    fn from(value: String) -> Self {
+        Host::Domain(value)
+    }
+}
+
+impl From<&str> for Host {
+    fn from(value: &str) -> Self {
+        Host::Domain(value.to_string())
+    }
+}
+
+impl From<IpAddr> for Host {
+    fn from(value: IpAddr) -> Self {
+        Host::Ip(value)
+    }
+}
+
+impl From<Ipv4Addr> for Host {
+    fn from(value: Ipv4Addr) -> Self {
+        Host::Ip(IpAddr::V4(value))
+    }
+}
+
+impl From<Ipv6Addr> for Host {
+    fn from(value: Ipv6Addr) -> Self {
+        Host::Ip(IpAddr::V6(value))
     }
 }
 
@@ -73,7 +228,7 @@ impl Authority {
             });
         }
 
-        if let Ok(ip) = authority.parse::<std::net::IpAddr>() {
+        if let Ok(ip) = authority.parse::<IpAddr>() {
             return Ok(Self {
                 host: Host::Ip(ip),
                 port: 0,
