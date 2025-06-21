@@ -40,9 +40,14 @@ pub(crate) fn has_overlapping_ranges<T: Ord + Clone>(ranges: &[RangeInclusive<T>
 pub(crate) fn range_overlaps<T: Ord + Clone>(
     ranges: &[RangeInclusive<T>],
     range: &RangeInclusive<T>,
+    self_index: Option<usize>,
 ) -> bool {
     ranges
         .iter()
+        .enumerate()
+        .filter_map(|(i, r)| {
+            self_index.map_or(Some(r), |index| if i != index { Some(r) } else { None })
+        })
         .any(|r| r.start() <= range.end() && r.end() >= range.start())
 }
 

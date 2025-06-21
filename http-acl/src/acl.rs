@@ -797,8 +797,8 @@ impl HttpAclBuilder {
             Err(AddError::AlreadyDeniedPortRange(port_range))
         } else if self.allowed_port_ranges.contains(&port_range) {
             Err(AddError::AlreadyAllowedPortRange(port_range))
-        } else if utils::range_overlaps(&self.allowed_port_ranges, &port_range)
-            || utils::range_overlaps(&self.denied_port_ranges, &port_range)
+        } else if utils::range_overlaps(&self.allowed_port_ranges, &port_range, None)
+            || utils::range_overlaps(&self.denied_port_ranges, &port_range, None)
         {
             Err(AddError::Overlaps(format!("{:?}", port_range)))
         } else {
@@ -818,11 +818,11 @@ impl HttpAclBuilder {
         mut self,
         port_ranges: Vec<RangeInclusive<u16>>,
     ) -> Result<Self, AddError> {
-        for port_range in &port_ranges {
+        for (i, port_range) in port_ranges.iter().enumerate() {
             if self.denied_port_ranges.contains(port_range) {
                 return Err(AddError::AlreadyDeniedPortRange(port_range.clone()));
-            } else if utils::range_overlaps(&port_ranges, port_range)
-                || utils::range_overlaps(&self.denied_port_ranges, port_range)
+            } else if utils::range_overlaps(&port_ranges, port_range, Some(i))
+                || utils::range_overlaps(&self.denied_port_ranges, port_range, None)
             {
                 return Err(AddError::Overlaps(format!("{:?}", port_range)));
             }
@@ -846,8 +846,8 @@ impl HttpAclBuilder {
             Err(AddError::AlreadyAllowedPortRange(port_range))
         } else if self.denied_port_ranges.contains(&port_range) {
             Err(AddError::AlreadyDeniedPortRange(port_range))
-        } else if utils::range_overlaps(&self.allowed_port_ranges, &port_range)
-            || utils::range_overlaps(&self.denied_port_ranges, &port_range)
+        } else if utils::range_overlaps(&self.allowed_port_ranges, &port_range, None)
+            || utils::range_overlaps(&self.denied_port_ranges, &port_range, None)
         {
             Err(AddError::Overlaps(format!("{:?}", port_range)))
         } else {
@@ -891,8 +891,8 @@ impl HttpAclBuilder {
             return Err(AddError::AlreadyDeniedIpRange(ip_range));
         } else if self.allowed_ip_ranges.contains(&ip_range) {
             return Err(AddError::AlreadyAllowedIpRange(ip_range));
-        } else if utils::range_overlaps(&self.allowed_ip_ranges, &ip_range)
-            || utils::range_overlaps(&self.denied_ip_ranges, &ip_range)
+        } else if utils::range_overlaps(&self.allowed_ip_ranges, &ip_range, None)
+            || utils::range_overlaps(&self.denied_ip_ranges, &ip_range, None)
         {
             return Err(AddError::Overlaps(format!("{:?}", ip_range)));
         }
@@ -922,11 +922,11 @@ impl HttpAclBuilder {
             .map(|ip| ip.into_range())
             .collect::<Option<Vec<_>>>()
             .ok_or_else(|| AddError::InvalidEntity("Invalid IP range".to_string()))?;
-        for ip_range in &ip_ranges {
+        for (i, ip_range) in ip_ranges.iter().enumerate() {
             if self.denied_ip_ranges.contains(ip_range) {
                 return Err(AddError::AlreadyDeniedIpRange(ip_range.clone()));
-            } else if utils::range_overlaps(&ip_ranges, ip_range)
-                || utils::range_overlaps(&self.denied_ip_ranges, ip_range)
+            } else if utils::range_overlaps(&ip_ranges, ip_range, Some(i))
+                || utils::range_overlaps(&self.denied_ip_ranges, ip_range, None)
             {
                 return Err(AddError::Overlaps(format!("{:?}", ip_range)));
             }
@@ -950,6 +950,10 @@ impl HttpAclBuilder {
             return Err(AddError::AlreadyAllowedIpRange(ip_range));
         } else if self.denied_ip_ranges.contains(&ip_range) {
             return Err(AddError::AlreadyDeniedIpRange(ip_range));
+        } else if utils::range_overlaps(&self.allowed_ip_ranges, &ip_range, None)
+            || utils::range_overlaps(&self.denied_ip_ranges, &ip_range, None)
+        {
+            return Err(AddError::Overlaps(format!("{:?}", ip_range)));
         }
         self.denied_ip_ranges.push(ip_range);
         Ok(self)
@@ -977,11 +981,11 @@ impl HttpAclBuilder {
             .map(|ip| ip.into_range())
             .collect::<Option<Vec<_>>>()
             .ok_or_else(|| AddError::InvalidEntity("Invalid IP range".to_string()))?;
-        for ip_range in &ip_ranges {
+        for (i, ip_range) in ip_ranges.iter().enumerate() {
             if self.allowed_ip_ranges.contains(ip_range) {
                 return Err(AddError::AlreadyAllowedIpRange(ip_range.clone()));
-            } else if utils::range_overlaps(&self.allowed_ip_ranges, ip_range)
-                || utils::range_overlaps(&ip_ranges, ip_range)
+            } else if utils::range_overlaps(&ip_ranges, ip_range, Some(i))
+                || utils::range_overlaps(&self.allowed_ip_ranges, ip_range, None)
             {
                 return Err(AddError::Overlaps(format!("{:?}", ip_range)));
             }
