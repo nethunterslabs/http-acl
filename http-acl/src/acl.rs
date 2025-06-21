@@ -1,6 +1,9 @@
 //! Contains the [`HttpAcl`], [`HttpAclBuilder`],
 //! and related types.
 
+#[cfg(feature = "hashbrown")]
+use hashbrown::HashMap;
+#[cfg(not(feature = "hashbrown"))]
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};

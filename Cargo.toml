@@ -14,6 +14,7 @@ keywords = ["http", "acl", "ip", "network", "ssrf"]
 anyhow = "1.0.98"
 async-trait = "0.1.88"
 futures-util-preview = "0.2.2"
+hashbrown = { version = "0.15.4", features = ["inline-more", "serde"] }
 http = "1.3.1"
 ipnet = "2.11.0"
 matchit = "0.8.6"
