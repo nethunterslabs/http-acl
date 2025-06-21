@@ -2,9 +2,9 @@
 //! and related types.
 
 #[cfg(feature = "hashbrown")]
-use hashbrown::HashMap;
+use hashbrown::{HashMap, hash_map::Entry};
 #[cfg(not(feature = "hashbrown"))]
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeInclusive;
@@ -1028,9 +1028,7 @@ impl HttpAclBuilder {
     ) -> Result<Self, AddError> {
         if self.denied_headers.contains_key(&header) {
             Err(AddError::AlreadyDenied)
-        } else if let std::collections::hash_map::Entry::Vacant(e) =
-            self.allowed_headers.entry(header)
-        {
+        } else if let Entry::Vacant(e) = self.allowed_headers.entry(header) {
             e.insert(value);
             Ok(self)
         } else {
@@ -1074,9 +1072,7 @@ impl HttpAclBuilder {
     ) -> Result<Self, AddError> {
         if self.allowed_headers.contains_key(&header) {
             Err(AddError::AlreadyAllowed)
-        } else if let std::collections::hash_map::Entry::Vacant(e) =
-            self.denied_headers.entry(header)
-        {
+        } else if let Entry::Vacant(e) = self.denied_headers.entry(header) {
             e.insert(value);
             Ok(self)
         } else {
