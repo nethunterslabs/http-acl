@@ -2,9 +2,9 @@
 //! and related types.
 
 #[cfg(feature = "hashbrown")]
-use hashbrown::{HashMap, hash_map::Entry};
+use hashbrown::{HashMap, HashSet, hash_map::Entry};
 #[cfg(not(feature = "hashbrown"))]
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeInclusive;
@@ -36,10 +36,10 @@ pub type ValidateFn = Arc<
 pub struct HttpAcl {
     allow_http: bool,
     allow_https: bool,
-    allowed_methods: Box<[HttpRequestMethod]>,
-    denied_methods: Box<[HttpRequestMethod]>,
-    allowed_hosts: Box<[Box<str>]>,
-    denied_hosts: Box<[Box<str>]>,
+    allowed_methods: HashSet<HttpRequestMethod>,
+    denied_methods: HashSet<HttpRequestMethod>,
+    allowed_hosts: HashSet<Box<str>>,
+    denied_hosts: HashSet<Box<str>>,
     allowed_port_ranges: Box<[RangeInclusive<u16>]>,
     denied_port_ranges: Box<[RangeInclusive<u16>]>,
     allowed_ip_ranges: Box<[RangeInclusive<IpAddr>]>,
@@ -116,7 +116,7 @@ impl std::default::Default for HttpAcl {
         Self {
             allow_http: true,
             allow_https: true,
-            allowed_methods: vec![
+            allowed_methods: [
                 HttpRequestMethod::CONNECT,
                 HttpRequestMethod::DELETE,
                 HttpRequestMethod::GET,
@@ -127,10 +127,11 @@ impl std::default::Default for HttpAcl {
                 HttpRequestMethod::PUT,
                 HttpRequestMethod::TRACE,
             ]
-            .into_boxed_slice(),
-            denied_methods: Vec::new().into_boxed_slice(),
-            allowed_hosts: Vec::new().into_boxed_slice(),
-            denied_hosts: Vec::new().into_boxed_slice(),
+            .into_iter()
+            .collect(),
+            denied_methods: HashSet::new(),
+            allowed_hosts: HashSet::new(),
+            denied_hosts: HashSet::new(),
             allowed_port_ranges: vec![80..=80, 443..=443].into_boxed_slice(),
             denied_port_ranges: Vec::new().into_boxed_slice(),
             allowed_ip_ranges: Vec::new().into_boxed_slice(),
@@ -1244,8 +1245,8 @@ impl HttpAclBuilder {
         HttpAcl {
             allow_http: self.allow_http,
             allow_https: self.allow_https,
-            allowed_methods: self.allowed_methods.into_boxed_slice(),
-            denied_methods: self.denied_methods.into_boxed_slice(),
+            allowed_methods: self.allowed_methods.into_iter().collect(),
+            denied_methods: self.denied_methods.into_iter().collect(),
             allowed_hosts: self
                 .allowed_hosts
                 .into_iter()
