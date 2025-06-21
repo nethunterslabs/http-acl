@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeInclusive;
+use std::sync::Arc;
 
 use matchit::Router;
 #[cfg(feature = "serde")]
@@ -15,8 +16,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::AddError,
-    utils::{self, IntoIpRange},
+    utils::{self, IntoIpRange, authority::Authority},
 };
+
+/// A function that validates an HTTP request against an ACL.
+pub type ValidateFn = Arc<
+    dyn for<'h> Fn(
+            &str,
+            &Authority,
+            Box<dyn Iterator<Item = (&'h str, &'h str)> + Send + Sync + 'h>,
+            Option<&[u8]>,
+        ) -> AclClassification
+        + Send
+        + Sync,
+>;
 
 #[derive(Clone)]
 /// Represents an HTTP ACL.
@@ -36,6 +49,7 @@ pub struct HttpAcl {
     denied_headers: HashMap<Box<str>, Option<Box<str>>>,
     allowed_url_paths_router: Router<()>,
     denied_url_paths_router: Router<()>,
+    validate_fn: Option<ValidateFn>,
     allow_private_ip_ranges: bool,
     method_acl_default: bool,
     host_acl_default: bool,
@@ -126,6 +140,7 @@ impl std::default::Default for HttpAcl {
             denied_headers: HashMap::new(),
             allowed_url_paths_router: Router::new(),
             denied_url_paths_router: Router::new(),
+            validate_fn: None,
             allow_private_ip_ranges: false,
             method_acl_default: false,
             host_acl_default: false,
@@ -251,6 +266,21 @@ impl HttpAcl {
             AclClassification::AllowedDefault
         } else {
             AclClassification::DeniedDefault
+        }
+    }
+
+    /// Returns whether a request is valid.
+    pub fn is_valid<'h>(
+        &self,
+        scheme: &str,
+        authority: &Authority,
+        headers: impl Iterator<Item = (&'h str, &'h str)> + Send + Sync + 'h,
+        body: Option<&[u8]>,
+    ) -> AclClassification {
+        if let Some(validate_fn) = &self.validate_fn {
+            validate_fn(scheme, authority, Box::new(headers), body)
+        } else {
+            AclClassification::AllowedDefault
         }
     }
 
@@ -1210,6 +1240,11 @@ impl HttpAclBuilder {
 
     /// Builds the [`HttpAcl`].
     pub fn build(self) -> HttpAcl {
+        self.build_full(None)
+    }
+
+    /// Builds the [`HttpAcl`].
+    pub fn build_full(self, validate_fn: Option<ValidateFn>) -> HttpAcl {
         HttpAcl {
             allow_http: self.allow_http,
             allow_https: self.allow_https,
@@ -1246,6 +1281,7 @@ impl HttpAclBuilder {
                 .into_iter()
                 .map(|(k, v)| (k.into_boxed_str(), v))
                 .collect(),
+            validate_fn,
             allow_private_ip_ranges: self.allow_private_ip_ranges,
             method_acl_default: self.method_acl_default,
             host_acl_default: self.host_acl_default,
