@@ -7,13 +7,17 @@ pub mod acl;
 pub mod error;
 pub mod utils;
 
-pub use acl::{HttpAcl, HttpAclBuilder, HttpRequestMethod};
+pub use acl::{AclClassification, HttpAcl, HttpAclBuilder, HttpRequestMethod};
 pub use utils::IntoIpRange;
 
 #[cfg(test)]
 mod tests {
-    use super::HttpAclBuilder;
+    use std::net::IpAddr;
+    use std::sync::Arc;
+
     use ipnet::IpNet;
+
+    use super::{AclClassification, HttpAclBuilder};
 
     #[test]
     fn acl() {
@@ -157,5 +161,91 @@ mod tests {
         assert!(acl.is_header_allowed("X-Allowed2", "false").is_allowed());
         assert!(acl.is_header_allowed("X-Denied", "true").is_denied());
         assert!(acl.is_header_allowed("X-Denied2", "false").is_denied());
+    }
+
+    #[test]
+    fn valid_acl() {
+        /*
+                pub type ValidateFn = Arc<
+            dyn for<'h> Fn(
+                    &str,
+                    &Authority,
+                    Box<dyn Iterator<Item = (&'h str, &'h str)> + Send + Sync + 'h>,
+                    Option<&[u8]>,
+                ) -> AclClassification
+                + Send
+                + Sync,
+        >;
+                 */
+        let acl =
+            HttpAclBuilder::new().build_full(Some(Arc::new(|scheme, authority, headers, body| {
+                if scheme == "http" {
+                    return AclClassification::DeniedUserAcl;
+                }
+
+                if authority.host.is_ip() {
+                    return AclClassification::DeniedUserAcl;
+                }
+
+                for (header_name, header_value) in headers {
+                    if header_name == "<dangerous-header>" && header_value == "<dangerous-value>" {
+                        return AclClassification::DeniedUserAcl;
+                    }
+                }
+
+                if let Some(body) = body {
+                    if body == b"<dangerous-body>" {
+                        return AclClassification::DeniedUserAcl;
+                    }
+                }
+
+                AclClassification::AllowedDefault
+            })));
+
+        assert!(
+            acl.is_valid(
+                "https",
+                &"example.com".into(),
+                [("<header>", "<value>")].into_iter(),
+                Some(b"body"),
+            )
+            .is_allowed()
+        );
+        assert!(
+            acl.is_valid(
+                "http",
+                &"example.com".into(),
+                [("<header>", "<value>")].into_iter(),
+                Some(b"body"),
+            )
+            .is_denied()
+        );
+        assert!(
+            acl.is_valid(
+                "https",
+                &"1.1.1.1".parse::<IpAddr>().unwrap().into(),
+                [("<header>", "<value>")].into_iter(),
+                Some(b"body"),
+            )
+            .is_denied()
+        );
+        assert!(
+            acl.is_valid(
+                "https",
+                &"example.com".into(),
+                [("<dangerous-header>", "<dangerous-value>")].into_iter(),
+                Some(b"body"),
+            )
+            .is_denied()
+        );
+        assert!(
+            acl.is_valid(
+                "https",
+                &"example.com".into(),
+                [("<header>", "<value>")].into_iter(),
+                Some(b"<dangerous-body>"),
+            )
+            .is_denied()
+        );
     }
 }
