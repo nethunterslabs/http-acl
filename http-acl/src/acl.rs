@@ -147,7 +147,7 @@ impl std::default::Default for HttpAcl {
             host_acl_default: false,
             port_acl_default: false,
             ip_acl_default: false,
-            header_acl_default: false,
+            header_acl_default: true,
             url_path_acl_default: true,
         }
     }
@@ -553,7 +553,7 @@ impl HttpAclBuilder {
             host_acl_default: false,
             port_acl_default: false,
             ip_acl_default: false,
-            header_acl_default: false,
+            header_acl_default: true,
             url_path_acl_default: true,
         }
     }
