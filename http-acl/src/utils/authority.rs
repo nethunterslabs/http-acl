@@ -163,10 +163,10 @@ impl Host {
 impl std::fmt::Display for Host {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Host::Domain(domain) => write!(f, "{}", domain),
+            Host::Domain(domain) => write!(f, "{domain}"),
             Host::Ip(ip) => match ip {
-                IpAddr::V4(ip) => write!(f, "{}", ip),
-                IpAddr::V6(ip) => write!(f, "[{}]", ip),
+                IpAddr::V4(ip) => write!(f, "{ip}"),
+                IpAddr::V6(ip) => write!(f, "[{ip}]"),
             },
         }
     }

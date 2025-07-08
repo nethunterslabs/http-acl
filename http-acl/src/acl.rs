@@ -340,7 +340,7 @@ impl std::fmt::Display for AclClassification {
                 "The entity is denied because the default is to deny if no ACL match is found."
             ),
             AclClassification::Denied(reason) => {
-                write!(f, "The entity is denied because {}.", reason)
+                write!(f, "The entity is denied because {reason}.")
             }
         }
     }
@@ -800,7 +800,7 @@ impl HttpAclBuilder {
         } else if utils::range_overlaps(&self.allowed_port_ranges, &port_range, None)
             || utils::range_overlaps(&self.denied_port_ranges, &port_range, None)
         {
-            Err(AddError::Overlaps(format!("{:?}", port_range)))
+            Err(AddError::Overlaps(format!("{port_range:?}")))
         } else {
             self.allowed_port_ranges.push(port_range);
             Ok(self)
@@ -824,7 +824,7 @@ impl HttpAclBuilder {
             } else if utils::range_overlaps(&port_ranges, port_range, Some(i))
                 || utils::range_overlaps(&self.denied_port_ranges, port_range, None)
             {
-                return Err(AddError::Overlaps(format!("{:?}", port_range)));
+                return Err(AddError::Overlaps(format!("{port_range:?}")));
             }
         }
         self.allowed_port_ranges = port_ranges;
@@ -849,7 +849,7 @@ impl HttpAclBuilder {
         } else if utils::range_overlaps(&self.allowed_port_ranges, &port_range, None)
             || utils::range_overlaps(&self.denied_port_ranges, &port_range, None)
         {
-            Err(AddError::Overlaps(format!("{:?}", port_range)))
+            Err(AddError::Overlaps(format!("{port_range:?}")))
         } else {
             self.denied_port_ranges.push(port_range);
             Ok(self)
@@ -894,7 +894,7 @@ impl HttpAclBuilder {
         } else if utils::range_overlaps(&self.allowed_ip_ranges, &ip_range, None)
             || utils::range_overlaps(&self.denied_ip_ranges, &ip_range, None)
         {
-            return Err(AddError::Overlaps(format!("{:?}", ip_range)));
+            return Err(AddError::Overlaps(format!("{ip_range:?}")));
         }
         self.allowed_ip_ranges.push(ip_range);
         Ok(self)
@@ -928,7 +928,7 @@ impl HttpAclBuilder {
             } else if utils::range_overlaps(&ip_ranges, ip_range, Some(i))
                 || utils::range_overlaps(&self.denied_ip_ranges, ip_range, None)
             {
-                return Err(AddError::Overlaps(format!("{:?}", ip_range)));
+                return Err(AddError::Overlaps(format!("{ip_range:?}")));
             }
         }
         self.allowed_ip_ranges = ip_ranges;
@@ -953,7 +953,7 @@ impl HttpAclBuilder {
         } else if utils::range_overlaps(&self.allowed_ip_ranges, &ip_range, None)
             || utils::range_overlaps(&self.denied_ip_ranges, &ip_range, None)
         {
-            return Err(AddError::Overlaps(format!("{:?}", ip_range)));
+            return Err(AddError::Overlaps(format!("{ip_range:?}")));
         }
         self.denied_ip_ranges.push(ip_range);
         Ok(self)
@@ -987,7 +987,7 @@ impl HttpAclBuilder {
             } else if utils::range_overlaps(&ip_ranges, ip_range, Some(i))
                 || utils::range_overlaps(&self.allowed_ip_ranges, ip_range, None)
             {
-                return Err(AddError::Overlaps(format!("{:?}", ip_range)));
+                return Err(AddError::Overlaps(format!("{ip_range:?}")));
             }
         }
         self.denied_ip_ranges = ip_ranges;
@@ -1182,7 +1182,7 @@ impl HttpAclBuilder {
         for url_path in &url_paths {
             self.allowed_url_paths_router
                 .insert(url_path.clone(), ())
-                .map_err(|_| AddError::InvalidEntity(format!("Invalid URL path: {}", url_path)))?;
+                .map_err(|_| AddError::InvalidEntity(format!("Invalid URL path: {url_path}")))?;
         }
         self.allowed_url_paths = url_paths;
         Ok(self)
@@ -1242,7 +1242,7 @@ impl HttpAclBuilder {
         for url_path in &url_paths {
             self.denied_url_paths_router
                 .insert(url_path.clone(), ())
-                .map_err(|_| AddError::InvalidEntity(format!("Invalid URL path: {}", url_path)))?;
+                .map_err(|_| AddError::InvalidEntity(format!("Invalid URL path: {url_path}")))?;
         }
         self.denied_url_paths = url_paths;
         Ok(self)
@@ -1348,7 +1348,7 @@ impl HttpAclBuilder {
                 return Err(AddError::InvalidEntity(host.to_string()));
             }
             if self.denied_hosts.contains(host) {
-                return Err(AddError::BothAllowedAndDenied(format!("Host `{}`", host)));
+                return Err(AddError::BothAllowedAndDenied(format!("Host `{host}`")));
             }
         }
         if !utils::has_unique_elements(&self.denied_hosts) {
@@ -1361,7 +1361,7 @@ impl HttpAclBuilder {
                 return Err(AddError::InvalidEntity(host.to_string()));
             }
             if self.allowed_hosts.contains(host) {
-                return Err(AddError::BothAllowedAndDenied(format!("Host `{}`", host)));
+                return Err(AddError::BothAllowedAndDenied(format!("Host `{host}`")));
             }
         }
         if !utils::has_unique_elements(&self.allowed_port_ranges) {
@@ -1377,8 +1377,7 @@ impl HttpAclBuilder {
         for port_range in &self.allowed_port_ranges {
             if self.denied_port_ranges.contains(port_range) {
                 return Err(AddError::BothAllowedAndDenied(format!(
-                    "Port range `{:?}`",
-                    port_range
+                    "Port range `{port_range:?}`"
                 )));
             }
         }
@@ -1395,8 +1394,7 @@ impl HttpAclBuilder {
         for port_range in &self.denied_port_ranges {
             if self.allowed_port_ranges.contains(port_range) {
                 return Err(AddError::BothAllowedAndDenied(format!(
-                    "Port range `{:?}`",
-                    port_range
+                    "Port range `{port_range:?}`"
                 )));
             }
         }
@@ -1413,8 +1411,7 @@ impl HttpAclBuilder {
         for ip_range in &self.allowed_ip_ranges {
             if self.denied_ip_ranges.contains(ip_range) {
                 return Err(AddError::BothAllowedAndDenied(format!(
-                    "IP range `{:?}`",
-                    ip_range
+                    "IP range `{ip_range:?}`"
                 )));
             }
         }
@@ -1431,8 +1428,7 @@ impl HttpAclBuilder {
         for ip_range in &self.denied_ip_ranges {
             if self.allowed_ip_ranges.contains(ip_range) {
                 return Err(AddError::BothAllowedAndDenied(format!(
-                    "IP range `{:?}`",
-                    ip_range
+                    "IP range `{ip_range:?}`"
                 )));
             }
         }
@@ -1456,16 +1452,14 @@ impl HttpAclBuilder {
                 || self.denied_url_paths_router.at(url_path).is_ok()
             {
                 return Err(AddError::BothAllowedAndDenied(format!(
-                    "URL path `{}`",
-                    url_path
+                    "URL path `{url_path}`"
                 )));
             } else if self.allowed_url_paths_router.at(url_path).is_err() {
                 self.allowed_url_paths_router
                     .insert(url_path.clone(), ())
                     .map_err(|_| {
                         AddError::InvalidEntity(format!(
-                            "Failed to insert allowed URL path `{}`.",
-                            url_path
+                            "Failed to insert allowed URL path `{url_path}`."
                         ))
                     })?;
             }
@@ -1480,16 +1474,14 @@ impl HttpAclBuilder {
                 || self.allowed_url_paths_router.at(url_path).is_ok()
             {
                 return Err(AddError::BothAllowedAndDenied(format!(
-                    "URL path `{}`",
-                    url_path
+                    "URL path `{url_path}`"
                 )));
             } else if self.denied_url_paths_router.at(url_path).is_err() {
                 self.denied_url_paths_router
                     .insert(url_path.clone(), ())
                     .map_err(|_| {
                         AddError::InvalidEntity(format!(
-                            "Failed to insert denied URL path `{}`.",
-                            url_path
+                            "Failed to insert denied URL path `{url_path}`."
                         ))
                     })?;
             }
