@@ -249,15 +249,15 @@ impl Authority {
                 port: 0,
             }),
             Err(_) => {
-                if let Some((domain, port)) = authority.split_once(':') {
-                    if let Ok(port) = port.parse::<u16>() {
-                        url::Host::parse(domain).map_err(|_| AuthorityError::InvalidHost)?;
+                if let Some((domain, port)) = authority.split_once(':')
+                    && let Ok(port) = port.parse::<u16>()
+                {
+                    url::Host::parse(domain).map_err(|_| AuthorityError::InvalidHost)?;
 
-                        return Ok(Self {
-                            host: Host::Domain(domain.to_string()),
-                            port,
-                        });
-                    }
+                    return Ok(Self {
+                        host: Host::Domain(domain.to_string()),
+                        port,
+                    });
                 }
 
                 Err(AuthorityError::InvalidHost)

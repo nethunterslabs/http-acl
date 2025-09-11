@@ -26,10 +26,10 @@ pub(crate) fn has_overlapping_ranges<T: Ord + Clone>(ranges: &[RangeInclusive<T>
     let mut sorted = ranges.to_vec();
     sorted.sort_by(|a, b| a.start().cmp(b.start()));
     for pair in sorted.windows(2) {
-        if let [a, b] = pair {
-            if a.end() >= b.start() {
-                return true;
-            }
+        if let [a, b] = pair
+            && a.end() >= b.start()
+        {
+            return true;
         }
     }
     false

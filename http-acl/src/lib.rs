@@ -193,10 +193,10 @@ mod tests {
                     }
                 }
 
-                if let Some(body) = body {
-                    if body == b"<dangerous-body>" {
-                        return AclClassification::DeniedUserAcl;
-                    }
+                if let Some(body) = body
+                    && body == b"<dangerous-body>"
+                {
+                    return AclClassification::DeniedUserAcl;
                 }
 
                 AclClassification::AllowedDefault
