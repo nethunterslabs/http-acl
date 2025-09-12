@@ -120,6 +120,24 @@ mod tests {
             acl.is_ip_allowed(&"192.168.1.1".parse().unwrap())
                 .is_allowed()
         );
+        assert!(
+            acl.is_ip_allowed(&"203.0.113.12".parse().unwrap())
+                .is_allowed()
+        );
+
+        let acl = HttpAclBuilder::new()
+            .ip_acl_default(true)
+            .try_build()
+            .unwrap();
+
+        assert!(
+            acl.is_ip_allowed(&"192.168.1.1".parse().unwrap())
+                .is_denied()
+        );
+        assert!(
+            acl.is_ip_allowed(&"203.0.113.12".parse().unwrap())
+                .is_denied()
+        );
     }
 
     #[test]
