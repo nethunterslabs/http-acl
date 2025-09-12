@@ -187,10 +187,10 @@ impl HttpAcl {
 
     /// Returns whether the host is allowed.
     pub fn is_host_allowed(&self, host: &str) -> AclClassification {
-        if self.denied_hosts.iter().any(|h| h.as_ref() == host) {
-            AclClassification::DeniedUserAcl
-        } else if self.allowed_hosts.iter().any(|h| h.as_ref() == host) {
+        if self.allowed_hosts.iter().any(|h| h.as_ref() == host) {
             AclClassification::AllowedUserAcl
+        } else if self.denied_hosts.iter().any(|h| h.as_ref() == host) {
+            AclClassification::DeniedUserAcl
         } else if self.host_acl_default {
             AclClassification::AllowedDefault
         } else {
@@ -200,10 +200,10 @@ impl HttpAcl {
 
     /// Returns whether the port is allowed.
     pub fn is_port_allowed(&self, port: u16) -> AclClassification {
-        if Self::is_port_in_ranges(port, &self.denied_port_ranges) {
-            AclClassification::DeniedUserAcl
-        } else if Self::is_port_in_ranges(port, &self.allowed_port_ranges) {
+        if Self::is_port_in_ranges(port, &self.allowed_port_ranges) {
             AclClassification::AllowedUserAcl
+        } else if Self::is_port_in_ranges(port, &self.denied_port_ranges) {
+            AclClassification::DeniedUserAcl
         } else if self.port_acl_default {
             AclClassification::AllowedDefault
         } else {
