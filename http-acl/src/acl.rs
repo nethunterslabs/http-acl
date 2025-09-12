@@ -210,20 +210,16 @@ impl HttpAcl {
 
     /// Returns whether an IP is allowed.
     pub fn is_ip_allowed(&self, ip: &IpAddr) -> AclClassification {
-        if (!utils::ip::is_global_ip(ip) || ip.is_loopback()) && !utils::ip::is_private_ip(ip) {
-            if Self::is_ip_in_ranges(ip, &self.allowed_ip_ranges) {
-                return AclClassification::AllowedUserAcl;
+        if !utils::ip::is_global_ip(ip) && !self.allow_private_ip_ranges {
+            if utils::ip::is_private_ip(ip) {
+                AclClassification::DeniedPrivateRange
             } else {
-                return AclClassification::DeniedNotGlobal;
+                AclClassification::DeniedNotGlobal
             }
-        }
-
-        if Self::is_ip_in_ranges(ip, &self.allowed_ip_ranges) {
+        } else if Self::is_ip_in_ranges(ip, &self.allowed_ip_ranges) {
             AclClassification::AllowedUserAcl
         } else if Self::is_ip_in_ranges(ip, &self.denied_ip_ranges) {
             AclClassification::DeniedUserAcl
-        } else if utils::ip::is_private_ip(ip) && !self.allow_private_ip_ranges {
-            AclClassification::DeniedPrivateRange
         } else if self.ip_acl_default {
             AclClassification::AllowedDefault
         } else {
