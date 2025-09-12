@@ -1476,6 +1476,13 @@ impl HttpAclBuilder {
                     "IP range `{ip_range:?}`"
                 )));
             }
+
+            if (!utils::ip::is_global_ip(ip_range.start())
+                || !utils::ip::is_global_ip(ip_range.end()))
+                && !self.allow_non_global_ip_ranges
+            {
+                return Err(AddError::NonGlobalIpRange(ip_range.clone()));
+            }
         }
         if !utils::has_unique_elements(&self.denied_ip_ranges) {
             return Err(AddError::NotUnique(
@@ -1492,6 +1499,13 @@ impl HttpAclBuilder {
                 return Err(AddError::BothAllowedAndDenied(format!(
                     "IP range `{ip_range:?}`"
                 )));
+            }
+
+            if (!utils::ip::is_global_ip(ip_range.start())
+                || !utils::ip::is_global_ip(ip_range.end()))
+                && !self.allow_non_global_ip_ranges
+            {
+                return Err(AddError::NonGlobalIpRange(ip_range.clone()));
             }
         }
         if !utils::has_unique_elements(&self.static_dns_mapping) {

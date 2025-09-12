@@ -34,6 +34,12 @@ pub enum AddError {
     /// The IP range is already denied.
     #[error("The IP range `{0:?}` is already denied.")]
     AlreadyDeniedIpRange(RangeInclusive<IpAddr>),
+    /// The IP range is not a global IP range.
+    /// This error is returned if the ACL is configured to disallow non-global IP ranges.
+    #[error(
+        "The IP range `{0:?}` is not a global IP range, and non-global IP ranges are not allowed."
+    )]
+    NonGlobalIpRange(RangeInclusive<IpAddr>),
     /// The header is already allowed.
     #[error("The header `{0}` is already allowed.")]
     AlreadyAllowedHeader(String, Option<String>),
