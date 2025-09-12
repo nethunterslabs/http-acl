@@ -172,6 +172,8 @@ impl HttpAcl {
     }
 
     /// Returns whether the method is allowed.
+    ///
+    /// Note: If you pass a string ensure it is uppercased first.
     pub fn is_method_allowed(&self, method: impl Into<HttpRequestMethod>) -> AclClassification {
         let method = method.into();
         if self.allowed_methods.contains(&method) {
@@ -186,6 +188,8 @@ impl HttpAcl {
     }
 
     /// Returns whether the host is allowed.
+    ///
+    /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn is_host_allowed(&self, host: &str) -> AclClassification {
         if self.allowed_hosts.iter().any(|h| h.as_ref() == host) {
             AclClassification::AllowedUserAcl
@@ -227,11 +231,15 @@ impl HttpAcl {
     }
 
     /// Resolve static DNS mapping.
+    ///
+    /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn resolve_static_dns_mapping(&self, host: &str) -> Option<SocketAddr> {
         self.static_dns_mapping.get(host).copied()
     }
 
     /// Returns whether a header is allowed.
+    ///
+    /// Note: Header names are case-insensitive, but this function assumes the caller provides them in a consistent case.
     pub fn is_header_allowed(&self, header_name: &str, header_value: &str) -> AclClassification {
         if let Some(allowed_value) = self.allowed_headers.get(header_name) {
             if allowed_value.as_deref() == Some(header_value) || allowed_value.is_none() {
@@ -253,6 +261,8 @@ impl HttpAcl {
     }
 
     /// Returns whether a URL path is allowed.
+    ///
+    /// Note: The URL path should be percent-decoded before passing it to this function.
     pub fn is_url_path_allowed(&self, url_path: &str) -> AclClassification {
         if self.allowed_url_paths_router.at(url_path).is_ok() {
             AclClassification::AllowedUserAcl
@@ -607,6 +617,8 @@ impl HttpAclBuilder {
     }
 
     /// Adds a method to the allowed methods.
+    ///
+    /// Note: If you pass a string ensure it is uppercased first.
     pub fn add_allowed_method(
         mut self,
         method: impl Into<HttpRequestMethod>,
@@ -623,6 +635,8 @@ impl HttpAclBuilder {
     }
 
     /// Removes a method from the allowed methods.
+    ///
+    /// Note: If you pass a string ensure it is uppercased first.
     pub fn remove_allowed_method(mut self, method: impl Into<HttpRequestMethod>) -> Self {
         let method = method.into();
         self.allowed_methods.retain(|m| m != &method);
@@ -630,6 +644,8 @@ impl HttpAclBuilder {
     }
 
     /// Sets the allowed methods.
+    ///
+    /// Note: If you pass strings ensure they are uppercased first.
     pub fn allowed_methods(
         mut self,
         methods: Vec<impl Into<HttpRequestMethod>>,
@@ -652,6 +668,8 @@ impl HttpAclBuilder {
     }
 
     /// Adds a method to the denied methods.
+    ///
+    /// Note: If you pass a string ensure it is uppercased first.
     pub fn add_denied_method(
         mut self,
         method: impl Into<HttpRequestMethod>,
@@ -668,6 +686,8 @@ impl HttpAclBuilder {
     }
 
     /// Removes a method from the denied methods.
+    ///
+    /// Note: If you pass a string ensure it is uppercased first.
     pub fn remove_denied_method(mut self, method: impl Into<HttpRequestMethod>) -> Self {
         let method = method.into();
         self.denied_methods.retain(|m| m != &method);
@@ -675,6 +695,8 @@ impl HttpAclBuilder {
     }
 
     /// Sets the denied methods.
+    ///
+    /// Note: If you pass strings ensure they are uppercased first.
     pub fn denied_methods(
         mut self,
         methods: Vec<impl Into<HttpRequestMethod>>,
@@ -696,7 +718,9 @@ impl HttpAclBuilder {
         self
     }
 
-    /// Sets whether public IP ranges are allowed.
+    /// Adds a host to the allowed hosts.
+    ///
+    /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn add_allowed_host(mut self, host: String) -> Result<Self, AddError> {
         if utils::authority::is_valid_host(&host) {
             if self.denied_hosts.contains(&host) {
@@ -713,12 +737,16 @@ impl HttpAclBuilder {
     }
 
     /// Removes a host from the allowed hosts.
+    ///
+    /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn remove_allowed_host(mut self, host: String) -> Self {
         self.allowed_hosts.retain(|h| h != &host);
         self
     }
 
     /// Sets the allowed hosts.
+    ///
+    /// Note: The hosts should be in their canonical form (lowercase, punycode for IDN).
     pub fn allowed_hosts(mut self, hosts: Vec<String>) -> Result<Self, AddError> {
         for host in &hosts {
             if utils::authority::is_valid_host(host) {
@@ -740,6 +768,8 @@ impl HttpAclBuilder {
     }
 
     /// Adds a host to the denied hosts.
+    ///
+    /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn add_denied_host(mut self, host: String) -> Result<Self, AddError> {
         if utils::authority::is_valid_host(&host) {
             if self.allowed_hosts.contains(&host) {
@@ -756,12 +786,16 @@ impl HttpAclBuilder {
     }
 
     /// Removes a host from the denied hosts.
+    ///
+    /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn remove_denied_host(mut self, host: String) -> Self {
         self.denied_hosts.retain(|h| h != &host);
         self
     }
 
     /// Sets the denied hosts.
+    ///
+    /// Note: The hosts should be in their canonical form (lowercase, punycode for IDN).
     pub fn denied_hosts(mut self, hosts: Vec<String>) -> Result<Self, AddError> {
         for host in &hosts {
             if utils::authority::is_valid_host(host) {
@@ -995,6 +1029,8 @@ impl HttpAclBuilder {
     }
 
     /// Add a static DNS mapping.
+    ///
+    /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn add_static_dns_mapping(
         mut self,
         host: String,
@@ -1013,12 +1049,16 @@ impl HttpAclBuilder {
     }
 
     /// Removes a static DNS mapping.
+    ///
+    /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn remove_static_dns_mapping(mut self, host: &str) -> Self {
         self.static_dns_mapping.remove(host);
         self
     }
 
     /// Sets the static DNS mappings.
+    ///
+    /// Note: The hosts should be in their canonical form (lowercase, punycode for IDN).
     pub fn static_dns_mappings(
         mut self,
         mappings: HashMap<String, SocketAddr>,
@@ -1043,6 +1083,10 @@ impl HttpAclBuilder {
     }
 
     /// Adds a header to the allowed headers.
+    ///
+    /// If `value` is `None`, any value for the header is allowed.
+    ///
+    /// Note: Ensure header names are lowercased.
     pub fn add_allowed_header(
         mut self,
         header: String,
@@ -1059,12 +1103,16 @@ impl HttpAclBuilder {
     }
 
     /// Removes a header from the allowed headers.
+    ///
+    /// Note: Ensure header names are lowercased.
     pub fn remove_allowed_header(mut self, header: &str) -> Self {
         self.allowed_headers.remove(header);
         self
     }
 
     /// Sets the allowed headers.
+    ///
+    /// Note: Ensure header names are lowercased.
     pub fn allowed_headers(
         mut self,
         headers: HashMap<String, Option<String>>,
@@ -1085,6 +1133,10 @@ impl HttpAclBuilder {
     }
 
     /// Adds a header to the denied headers.
+    ///
+    /// If `value` is `None`, any value for the header is denied.
+    ///
+    /// Note: Ensure header names are lowercased.
     pub fn add_denied_header(
         mut self,
         header: String,
@@ -1101,12 +1153,16 @@ impl HttpAclBuilder {
     }
 
     /// Removes a header from the denied headers.
+    ///
+    /// Note: Ensure header names are lowercased.
     pub fn remove_denied_header(mut self, header: &str) -> Self {
         self.denied_headers.remove(header);
         self
     }
 
     /// Sets the denied headers.
+    ///
+    /// Note: Ensure header names are lowercased.
     pub fn denied_headers(
         mut self,
         headers: HashMap<String, Option<String>>,
@@ -1130,6 +1186,8 @@ impl HttpAclBuilder {
     }
 
     /// Adds a URL path to the allowed URL paths.
+    ///
+    /// Note: URL paths should start with a '/' and be properly URL-encoded.
     pub fn add_allowed_url_path(mut self, url_path: String) -> Result<Self, AddError> {
         if self.denied_url_paths.contains(&url_path)
             || self.denied_url_paths_router.at(&url_path).is_ok()
@@ -1149,6 +1207,8 @@ impl HttpAclBuilder {
     }
 
     /// Removes a URL path from the allowed URL paths.
+    ///
+    /// Note: URL paths should start with a '/' and be properly URL-encoded.
     pub fn remove_allowed_url_path(mut self, url_path: &str) -> Self {
         self.allowed_url_paths.retain(|p| p != url_path);
         self.allowed_url_paths_router = {
@@ -1164,6 +1224,8 @@ impl HttpAclBuilder {
     }
 
     /// Sets the allowed URL paths.
+    ///
+    /// Note: URL paths should start with a '/' and be properly URL-encoded.
     pub fn allowed_url_paths(mut self, url_paths: Vec<String>) -> Result<Self, AddError> {
         for url_path in &url_paths {
             if self.denied_url_paths.contains(url_path)
@@ -1190,6 +1252,8 @@ impl HttpAclBuilder {
     }
 
     /// Adds a URL path to the denied URL paths.
+    ///
+    /// Note: URL paths should start with a '/' and be properly URL-encoded.
     pub fn add_denied_url_path(mut self, url_path: String) -> Result<Self, AddError> {
         if self.allowed_url_paths.contains(&url_path)
             || self.allowed_url_paths_router.at(&url_path).is_ok()
@@ -1209,6 +1273,8 @@ impl HttpAclBuilder {
     }
 
     /// Removes a URL path from the denied URL paths.
+    ///
+    /// Note: URL paths should start with a '/' and be properly URL-encoded.
     pub fn remove_denied_url_path(mut self, url_path: &str) -> Self {
         self.denied_url_paths.retain(|p| p != url_path);
         self.denied_url_paths_router = {
@@ -1224,6 +1290,8 @@ impl HttpAclBuilder {
     }
 
     /// Sets the denied URL paths.
+    ///
+    /// Note: URL paths should start with a '/' and be properly URL-encoded.
     pub fn denied_url_paths(mut self, url_paths: Vec<String>) -> Result<Self, AddError> {
         for url_path in &url_paths {
             if self.allowed_url_paths.contains(url_path)
