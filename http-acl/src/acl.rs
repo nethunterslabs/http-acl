@@ -50,7 +50,7 @@ pub struct HttpAcl {
     allowed_url_paths_router: Router<()>,
     denied_url_paths_router: Router<()>,
     validate_fn: Option<ValidateFn>,
-    allow_private_ip_ranges: bool,
+    allow_non_global_ip_ranges: bool,
     method_acl_default: bool,
     host_acl_default: bool,
     port_acl_default: bool,
@@ -75,7 +75,10 @@ impl std::fmt::Debug for HttpAcl {
             .field("static_dns_mapping", &self.static_dns_mapping)
             .field("allowed_headers", &self.allowed_headers)
             .field("denied_headers", &self.denied_headers)
-            .field("allow_private_ip_ranges", &self.allow_private_ip_ranges)
+            .field(
+                "allow_non_global_ip_ranges",
+                &self.allow_non_global_ip_ranges,
+            )
             .field("method_acl_default", &self.method_acl_default)
             .field("host_acl_default", &self.host_acl_default)
             .field("port_acl_default", &self.port_acl_default)
@@ -101,7 +104,7 @@ impl PartialEq for HttpAcl {
             && self.static_dns_mapping == other.static_dns_mapping
             && self.allowed_headers == other.allowed_headers
             && self.denied_headers == other.denied_headers
-            && self.allow_private_ip_ranges == other.allow_private_ip_ranges
+            && self.allow_non_global_ip_ranges == other.allow_non_global_ip_ranges
             && self.method_acl_default == other.method_acl_default
             && self.host_acl_default == other.host_acl_default
             && self.port_acl_default == other.port_acl_default
@@ -142,7 +145,7 @@ impl std::default::Default for HttpAcl {
             allowed_url_paths_router: Router::new(),
             denied_url_paths_router: Router::new(),
             validate_fn: None,
-            allow_private_ip_ranges: false,
+            allow_non_global_ip_ranges: false,
             method_acl_default: false,
             host_acl_default: false,
             port_acl_default: false,
@@ -210,12 +213,8 @@ impl HttpAcl {
 
     /// Returns whether an IP is allowed.
     pub fn is_ip_allowed(&self, ip: &IpAddr) -> AclClassification {
-        if !utils::ip::is_global_ip(ip) && !self.allow_private_ip_ranges {
-            if utils::ip::is_private_ip(ip) {
-                AclClassification::DeniedPrivateRange
-            } else {
-                AclClassification::DeniedNotGlobal
-            }
+        if !utils::ip::is_global_ip(ip) && !self.allow_non_global_ip_ranges {
+            AclClassification::DeniedNotGlobal
         } else if Self::is_ip_in_ranges(ip, &self.allowed_ip_ranges) {
             AclClassification::AllowedUserAcl
         } else if Self::is_ip_in_ranges(ip, &self.denied_ip_ranges) {
@@ -308,8 +307,6 @@ pub enum AclClassification {
     Denied(String),
     /// The IP is denied because it is not global.
     DeniedNotGlobal,
-    /// The IP is denied because it is in a private range.
-    DeniedPrivateRange,
 }
 
 impl std::fmt::Display for AclClassification {
@@ -327,9 +324,6 @@ impl std::fmt::Display for AclClassification {
             }
             AclClassification::DeniedNotGlobal => {
                 write!(f, "The ip is denied because it is not global.")
-            }
-            AclClassification::DeniedPrivateRange => {
-                write!(f, "The ip is denied because it is in a private range.")
             }
             AclClassification::DeniedDefault => write!(
                 f,
@@ -359,7 +353,6 @@ impl AclClassification {
                 | AclClassification::Denied(_)
                 | AclClassification::DeniedDefault
                 | AclClassification::DeniedNotGlobal
-                | AclClassification::DeniedPrivateRange
         )
     }
 }
@@ -448,7 +441,7 @@ pub struct HttpAclBuilder {
     denied_url_paths: Vec<String>,
     #[cfg_attr(feature = "serde", serde(skip))]
     denied_url_paths_router: Router<()>,
-    allow_private_ip_ranges: bool,
+    allow_non_global_ip_ranges: bool,
     method_acl_default: bool,
     host_acl_default: bool,
     port_acl_default: bool,
@@ -475,7 +468,10 @@ impl std::fmt::Debug for HttpAclBuilder {
             .field("denied_headers", &self.denied_headers)
             .field("allowed_url_paths", &self.allowed_url_paths)
             .field("denied_url_paths", &self.denied_url_paths)
-            .field("allow_private_ip_ranges", &self.allow_private_ip_ranges)
+            .field(
+                "allow_non_global_ip_ranges",
+                &self.allow_non_global_ip_ranges,
+            )
             .field("method_acl_default", &self.method_acl_default)
             .field("host_acl_default", &self.host_acl_default)
             .field("port_acl_default", &self.port_acl_default)
@@ -503,7 +499,7 @@ impl PartialEq for HttpAclBuilder {
             && self.denied_headers == other.denied_headers
             && self.allowed_url_paths == other.allowed_url_paths
             && self.denied_url_paths == other.denied_url_paths
-            && self.allow_private_ip_ranges == other.allow_private_ip_ranges
+            && self.allow_non_global_ip_ranges == other.allow_non_global_ip_ranges
             && self.method_acl_default == other.method_acl_default
             && self.host_acl_default == other.host_acl_default
             && self.port_acl_default == other.port_acl_default
@@ -543,7 +539,7 @@ impl HttpAclBuilder {
             allowed_url_paths_router: Router::new(),
             denied_url_paths: Vec::new(),
             denied_url_paths_router: Router::new(),
-            allow_private_ip_ranges: false,
+            allow_non_global_ip_ranges: false,
             static_dns_mapping: HashMap::new(),
             method_acl_default: false,
             host_acl_default: false,
@@ -566,9 +562,11 @@ impl HttpAclBuilder {
         self
     }
 
-    /// Sets whether private IP ranges are allowed.
-    pub fn private_ip_ranges(mut self, allow: bool) -> Self {
-        self.allow_private_ip_ranges = allow;
+    /// Sets whether non-global IP ranges are allowed.
+    ///
+    /// Non-global IP ranges include private, loopback, link-local, and other special-use addresses.
+    pub fn non_global_ip_ranges(mut self, allow: bool) -> Self {
+        self.allow_non_global_ip_ranges = allow;
         self
     }
 
@@ -1295,7 +1293,7 @@ impl HttpAclBuilder {
                 .map(|(k, v)| (k.into_boxed_str(), v))
                 .collect(),
             validate_fn,
-            allow_private_ip_ranges: self.allow_private_ip_ranges,
+            allow_non_global_ip_ranges: self.allow_non_global_ip_ranges,
             method_acl_default: self.method_acl_default,
             host_acl_default: self.host_acl_default,
             port_acl_default: self.port_acl_default,

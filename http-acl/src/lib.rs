@@ -109,9 +109,9 @@ mod tests {
     }
 
     #[test]
-    fn private_ip_acl() {
+    fn non_global_ip_acl() {
         let acl = HttpAclBuilder::new()
-            .private_ip_ranges(true)
+            .non_global_ip_ranges(true)
             .ip_acl_default(true)
             .try_build()
             .unwrap();

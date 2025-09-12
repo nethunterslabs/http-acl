@@ -259,6 +259,7 @@ pub(crate) fn is_global_ip(ip: &IpAddr) -> bool {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn is_private_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(ipv4) => ipv4_global::is_private(*ipv4),
