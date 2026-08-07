@@ -13,7 +13,6 @@ keywords = ["http", "acl", "ip", "network", "ssrf"]
 [workspace.dependencies]
 anyhow = "1.0.104"
 async-trait = "0.1.91"
-futures-util-preview = "0.2.2"
 hashbrown = { version = "0.17.1", features = ["inline-more", "serde"] }
 http = "1.5.0"
 ipnet = "2.12.1"
