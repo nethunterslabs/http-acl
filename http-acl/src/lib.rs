@@ -105,6 +105,18 @@ mod tests {
                 .is_err()
         );
     }
+
+    #[test]
+    fn mixed_family_ip_range_rejected() {
+        let start: IpAddr = "1.0.0.0".parse().unwrap();
+        let end: IpAddr = "::1".parse().unwrap();
+        assert!(
+            HttpAclBuilder::new()
+                .add_allowed_ip_range((start, end))
+                .is_err()
+        );
+    }
+
     #[test]
     fn ip_acl() {
         let acl = HttpAclBuilder::new()

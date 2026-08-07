@@ -51,14 +51,29 @@ pub(crate) fn range_overlaps<T: Ord + Clone>(
         .any(|r| r.start() <= range.end() && r.end() >= range.start())
 }
 
-/// Converts a type into an IP range.
+/// Converts a type into an IP range accepted by
+/// [`HttpAclBuilder::add_allowed_ip_range`](crate::HttpAclBuilder::add_allowed_ip_range)
+/// and its denied/setter counterparts.
+///
+/// Implemented for [`IpNet`], `RangeInclusive<IpAddr>`, and `(IpAddr, IpAddr)`. Use
+/// whichever is most convenient: a CIDR block, an inclusive range, or a plain tuple.
 pub trait IntoIpRange {
-    /// Converts the type into an IP range.
+    /// Converts the type into an IP range, or `None` if it isn't a valid one (see
+    /// [`Self::validate`]).
     fn into_range(self) -> Option<RangeInclusive<IpAddr>>;
 
     /// Validates the IP range.
+    ///
+    /// Both ends must be the same IP address family. Without this check, a mixed-family
+    /// range like `1.0.0.0..=::` would be accepted (`IpAddr`'s `Ord` sorts all IPv4
+    /// addresses before all IPv6 addresses) and silently match every IPv4 address from
+    /// the start onward *and* every IPv6 address.
     fn validate(ip_range: RangeInclusive<IpAddr>) -> Option<RangeInclusive<IpAddr>> {
-        if ip_range.start() <= ip_range.end() {
+        let same_family = matches!(
+            (ip_range.start(), ip_range.end()),
+            (IpAddr::V4(_), IpAddr::V4(_)) | (IpAddr::V6(_), IpAddr::V6(_))
+        );
+        if same_family && ip_range.start() <= ip_range.end() {
             Some(ip_range)
         } else {
             None
