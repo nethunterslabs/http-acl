@@ -8,6 +8,7 @@ use std::ops::RangeInclusive;
 use ipnet::IpNet;
 
 pub mod authority;
+pub(crate) mod host_pattern;
 pub(crate) mod ip;
 pub mod url;
 

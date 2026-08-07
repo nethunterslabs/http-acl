@@ -70,6 +70,46 @@ mod tests {
     }
 
     #[test]
+    fn wildcard_host_acl() {
+        let acl = HttpAclBuilder::new()
+            .add_allowed_host("*.example.com".to_string())
+            .unwrap()
+            .add_allowed_host("?.example.org".to_string())
+            .unwrap()
+            .add_denied_host("secret.example.com".to_string())
+            .unwrap()
+            .try_build()
+            .unwrap();
+
+        // `*` matches one or more labels.
+        assert!(acl.is_host_allowed("foo.example.com").is_allowed());
+        assert!(acl.is_host_allowed("foo.bar.example.com").is_allowed());
+        assert!(!acl.is_host_allowed("example.com").is_allowed());
+
+        // `?` matches exactly one label.
+        assert!(acl.is_host_allowed("foo.example.org").is_allowed());
+        assert!(!acl.is_host_allowed("foo.bar.example.org").is_allowed());
+        assert!(!acl.is_host_allowed("example.org").is_allowed());
+
+        // Allow-list entries (including wildcard ones) are checked before deny-list
+        // entries, same as for exact hosts - a broad wildcard allow can shadow a more
+        // specific deny, so `secret.example.com` here is allowed, not denied.
+        assert!(acl.is_host_allowed("secret.example.com").is_allowed());
+
+        // Unrelated hosts fall through to the default (deny).
+        assert!(acl.is_host_allowed("example.net").is_denied());
+    }
+
+    #[test]
+    fn invalid_wildcard_host_pattern_rejected() {
+        assert!(
+            HttpAclBuilder::new()
+                .add_allowed_host("foo*.example.com".to_string())
+                .is_err()
+        );
+    }
+
+    #[test]
     fn port_acl() {
         let acl = HttpAclBuilder::new()
             .clear_allowed_port_ranges()

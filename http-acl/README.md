@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let acl = HttpAcl::builder()
         .add_allowed_host("example.com".to_string())
         .unwrap()
-        .add_allowed_host("example.org".to_string())
+        .add_allowed_host("*.example.org".to_string())
         .unwrap()
         .add_denied_host("example.net".to_string())
         .unwrap()
@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check if a request is allowed
     assert!(acl.is_host_allowed("example.com").is_allowed());
-    assert!(acl.is_host_allowed("example.org").is_allowed());
+    assert!(acl.is_host_allowed("foo.example.org").is_allowed());
     assert!(!acl.is_host_allowed("example.net").is_allowed());
     assert!(acl.is_port_allowed(8080).is_allowed());
     assert!(!acl.is_port_allowed(8443).is_allowed());
@@ -47,6 +47,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+## Wildcard hosts
+
+Allowed/denied hosts may be exact hostnames or wildcard patterns, matched label-by-label:
+
+- `?` matches exactly one label (`?.example.com` matches `foo.example.com`, not `foo.bar.example.com` or bare `example.com`).
+- `*` matches one or more labels (`*.example.com` matches `foo.example.com` and `foo.bar.example.com`, but not bare `example.com`).
+
+A wildcard must occupy an entire label - `foo*.example.com` is rejected as an invalid pattern.
+
+Allow-list entries (including wildcard ones) are always checked before deny-list entries, so a broad wildcard allow can shadow a more specific deny - e.g. allowing `*.example.com` while denying `secret.example.com` still allows `secret.example.com`, since the wildcard allow matches first.
 
 ## Documentation
 

@@ -16,7 +16,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::AddError,
-    utils::{self, IntoIpRange, authority::Authority},
+    utils::{
+        self, IntoIpRange,
+        authority::Authority,
+        host_pattern::{HostPattern, is_wildcard_host},
+    },
 };
 
 /// A function that validates an HTTP request against an ACL.
@@ -40,6 +44,8 @@ pub struct HttpAcl {
     denied_methods: HashSet<HttpRequestMethod>,
     allowed_hosts: HashSet<Box<str>>,
     denied_hosts: HashSet<Box<str>>,
+    allowed_host_patterns: Box<[HostPattern]>,
+    denied_host_patterns: Box<[HostPattern]>,
     allowed_port_ranges: Box<[RangeInclusive<u16>]>,
     denied_port_ranges: Box<[RangeInclusive<u16>]>,
     allowed_ip_ranges: Box<[RangeInclusive<IpAddr>]>,
@@ -135,6 +141,8 @@ impl std::default::Default for HttpAcl {
             denied_methods: HashSet::new(),
             allowed_hosts: HashSet::new(),
             denied_hosts: HashSet::new(),
+            allowed_host_patterns: Box::new([]),
+            denied_host_patterns: Box::new([]),
             allowed_port_ranges: vec![80..=80, 443..=443].into_boxed_slice(),
             denied_port_ranges: Vec::new().into_boxed_slice(),
             allowed_ip_ranges: Vec::new().into_boxed_slice(),
@@ -189,11 +197,18 @@ impl HttpAcl {
 
     /// Returns whether the host is allowed.
     ///
+    /// Hosts may be exact hostnames or wildcard patterns (see
+    /// [`HttpAclBuilder::add_allowed_host`] for the wildcard syntax).
+    ///
     /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn is_host_allowed(&self, host: &str) -> AclClassification {
-        if self.allowed_hosts.iter().any(|h| h.as_ref() == host) {
+        if self.allowed_hosts.contains(host)
+            || self.allowed_host_patterns.iter().any(|p| p.matches(host))
+        {
             AclClassification::AllowedUserAcl
-        } else if self.denied_hosts.iter().any(|h| h.as_ref() == host) {
+        } else if self.denied_hosts.contains(host)
+            || self.denied_host_patterns.iter().any(|p| p.matches(host))
+        {
             AclClassification::DeniedUserAcl
         } else if self.host_acl_default {
             AclClassification::AllowedDefault
@@ -438,6 +453,10 @@ pub struct HttpAclBuilder {
     denied_methods: Vec<HttpRequestMethod>,
     allowed_hosts: Vec<String>,
     denied_hosts: Vec<String>,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    allowed_host_patterns: Vec<HostPattern>,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    denied_host_patterns: Vec<HostPattern>,
     allowed_port_ranges: Vec<RangeInclusive<u16>>,
     denied_port_ranges: Vec<RangeInclusive<u16>>,
     allowed_ip_ranges: Vec<RangeInclusive<IpAddr>>,
@@ -539,6 +558,8 @@ impl HttpAclBuilder {
             denied_methods: Vec::new(),
             allowed_hosts: Vec::new(),
             denied_hosts: Vec::new(),
+            allowed_host_patterns: Vec::new(),
+            denied_host_patterns: Vec::new(),
             allowed_port_ranges: vec![80..=80, 443..=443],
             denied_port_ranges: Vec::new(),
             allowed_ip_ranges: Vec::new(),
@@ -720,20 +741,32 @@ impl HttpAclBuilder {
 
     /// Adds a host to the allowed hosts.
     ///
+    /// `host` may be an exact hostname, or a wildcard pattern where each label
+    /// (dot-separated segment) is either literal or one of:
+    ///
+    /// - `?` - matches exactly one label (e.g. `?.example.com` matches `foo.example.com`
+    ///   but not `foo.bar.example.com` or bare `example.com`).
+    /// - `*` - matches one or more labels (e.g. `*.example.com` matches `foo.example.com`
+    ///   and `foo.bar.example.com`, but not bare `example.com`).
+    ///
+    /// A wildcard must occupy an entire label; `foo*.example.com` is not a valid pattern.
+    ///
     /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn add_allowed_host(mut self, host: String) -> Result<Self, AddError> {
-        if utils::authority::is_valid_host(&host) {
-            if self.denied_hosts.contains(&host) {
-                Err(AddError::AlreadyDeniedHost(host))
-            } else if self.allowed_hosts.contains(&host) {
-                Err(AddError::AlreadyAllowedHost(host))
-            } else {
-                self.allowed_hosts.push(host);
-                Ok(self)
-            }
-        } else {
-            Err(AddError::InvalidEntity(host))
+        let pattern = Self::validate_host_or_pattern(&host)?;
+
+        if self.denied_hosts.contains(&host) {
+            return Err(AddError::AlreadyDeniedHost(host));
         }
+        if self.allowed_hosts.contains(&host) {
+            return Err(AddError::AlreadyAllowedHost(host));
+        }
+
+        if let Some(pattern) = pattern {
+            self.allowed_host_patterns.push(pattern);
+        }
+        self.allowed_hosts.push(host);
+        Ok(self)
     }
 
     /// Removes a host from the allowed hosts.
@@ -741,22 +774,26 @@ impl HttpAclBuilder {
     /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn remove_allowed_host(mut self, host: String) -> Self {
         self.allowed_hosts.retain(|h| h != &host);
+        self.allowed_host_patterns = Self::compile_host_patterns(&self.allowed_hosts);
         self
     }
 
     /// Sets the allowed hosts.
     ///
+    /// See [`Self::add_allowed_host`] for the wildcard pattern syntax.
+    ///
     /// Note: The hosts should be in their canonical form (lowercase, punycode for IDN).
     pub fn allowed_hosts(mut self, hosts: Vec<String>) -> Result<Self, AddError> {
+        let mut patterns = Vec::new();
         for host in &hosts {
-            if utils::authority::is_valid_host(host) {
-                if self.denied_hosts.contains(host) {
-                    return Err(AddError::AlreadyDeniedHost(host.clone()));
-                }
-            } else {
-                return Err(AddError::InvalidEntity(host.clone()));
+            if let Some(pattern) = Self::validate_host_or_pattern(host)? {
+                patterns.push(pattern);
+            }
+            if self.denied_hosts.contains(host) {
+                return Err(AddError::AlreadyDeniedHost(host.clone()));
             }
         }
+        self.allowed_host_patterns = patterns;
         self.allowed_hosts = hosts;
         Ok(self)
     }
@@ -764,25 +801,30 @@ impl HttpAclBuilder {
     /// Clears the allowed hosts.
     pub fn clear_allowed_hosts(mut self) -> Self {
         self.allowed_hosts.clear();
+        self.allowed_host_patterns.clear();
         self
     }
 
     /// Adds a host to the denied hosts.
     ///
+    /// See [`Self::add_allowed_host`] for the wildcard pattern syntax.
+    ///
     /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn add_denied_host(mut self, host: String) -> Result<Self, AddError> {
-        if utils::authority::is_valid_host(&host) {
-            if self.allowed_hosts.contains(&host) {
-                Err(AddError::AlreadyAllowedHost(host))
-            } else if self.denied_hosts.contains(&host) {
-                Err(AddError::AlreadyDeniedHost(host))
-            } else {
-                self.denied_hosts.push(host);
-                Ok(self)
-            }
-        } else {
-            Err(AddError::InvalidEntity(host))
+        let pattern = Self::validate_host_or_pattern(&host)?;
+
+        if self.allowed_hosts.contains(&host) {
+            return Err(AddError::AlreadyAllowedHost(host));
         }
+        if self.denied_hosts.contains(&host) {
+            return Err(AddError::AlreadyDeniedHost(host));
+        }
+
+        if let Some(pattern) = pattern {
+            self.denied_host_patterns.push(pattern);
+        }
+        self.denied_hosts.push(host);
+        Ok(self)
     }
 
     /// Removes a host from the denied hosts.
@@ -790,22 +832,26 @@ impl HttpAclBuilder {
     /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn remove_denied_host(mut self, host: String) -> Self {
         self.denied_hosts.retain(|h| h != &host);
+        self.denied_host_patterns = Self::compile_host_patterns(&self.denied_hosts);
         self
     }
 
     /// Sets the denied hosts.
     ///
+    /// See [`Self::add_allowed_host`] for the wildcard pattern syntax.
+    ///
     /// Note: The hosts should be in their canonical form (lowercase, punycode for IDN).
     pub fn denied_hosts(mut self, hosts: Vec<String>) -> Result<Self, AddError> {
+        let mut patterns = Vec::new();
         for host in &hosts {
-            if utils::authority::is_valid_host(host) {
-                if self.allowed_hosts.contains(host) {
-                    return Err(AddError::AlreadyAllowedHost(host.clone()));
-                }
-            } else {
-                return Err(AddError::InvalidEntity(host.clone()));
+            if let Some(pattern) = Self::validate_host_or_pattern(host)? {
+                patterns.push(pattern);
+            }
+            if self.allowed_hosts.contains(host) {
+                return Err(AddError::AlreadyAllowedHost(host.clone()));
             }
         }
+        self.denied_host_patterns = patterns;
         self.denied_hosts = hosts;
         Ok(self)
     }
@@ -813,7 +859,32 @@ impl HttpAclBuilder {
     /// Clears the denied hosts.
     pub fn clear_denied_hosts(mut self) -> Self {
         self.denied_hosts.clear();
+        self.denied_host_patterns.clear();
         self
+    }
+
+    /// Validates a host string, returning its compiled [`HostPattern`] if it is a
+    /// wildcard pattern, or `None` if it's a literal host.
+    fn validate_host_or_pattern(host: &str) -> Result<Option<HostPattern>, AddError> {
+        if is_wildcard_host(host) {
+            match HostPattern::parse(host) {
+                Some(pattern) => Ok(Some(pattern)),
+                None => Err(AddError::InvalidEntity(host.to_string())),
+            }
+        } else if utils::authority::is_valid_host(host) {
+            Ok(None)
+        } else {
+            Err(AddError::InvalidEntity(host.to_string()))
+        }
+    }
+
+    /// Compiles the wildcard patterns out of a list of (already-validated) host strings.
+    fn compile_host_patterns(hosts: &[String]) -> Vec<HostPattern> {
+        hosts
+            .iter()
+            .filter(|h| is_wildcard_host(h))
+            .filter_map(|h| HostPattern::parse(h))
+            .collect()
     }
 
     /// Adds a port range to the allowed port ranges.
@@ -1336,13 +1407,17 @@ impl HttpAclBuilder {
             allowed_hosts: self
                 .allowed_hosts
                 .into_iter()
+                .filter(|h| !is_wildcard_host(h))
                 .map(|x| x.into_boxed_str())
                 .collect(),
             denied_hosts: self
                 .denied_hosts
                 .into_iter()
+                .filter(|h| !is_wildcard_host(h))
                 .map(|x| x.into_boxed_str())
                 .collect(),
+            allowed_host_patterns: self.allowed_host_patterns.into_boxed_slice(),
+            denied_host_patterns: self.denied_host_patterns.into_boxed_slice(),
             allowed_port_ranges: self.allowed_port_ranges.into_boxed_slice(),
             denied_port_ranges: self.denied_port_ranges.into_boxed_slice(),
             allowed_ip_ranges: self.allowed_ip_ranges.into_boxed_slice(),
@@ -1410,7 +1485,16 @@ impl HttpAclBuilder {
             ));
         }
         for host in &self.allowed_hosts {
-            if !utils::authority::is_valid_host(host) {
+            if is_wildcard_host(host) {
+                match HostPattern::parse(host) {
+                    Some(pattern) => {
+                        if !self.allowed_host_patterns.contains(&pattern) {
+                            self.allowed_host_patterns.push(pattern);
+                        }
+                    }
+                    None => return Err(AddError::InvalidEntity(host.to_string())),
+                }
+            } else if !utils::authority::is_valid_host(host) {
                 return Err(AddError::InvalidEntity(host.to_string()));
             }
             if self.denied_hosts.contains(host) {
@@ -1423,7 +1507,16 @@ impl HttpAclBuilder {
             ));
         }
         for host in &self.denied_hosts {
-            if !utils::authority::is_valid_host(host) {
+            if is_wildcard_host(host) {
+                match HostPattern::parse(host) {
+                    Some(pattern) => {
+                        if !self.denied_host_patterns.contains(&pattern) {
+                            self.denied_host_patterns.push(pattern);
+                        }
+                    }
+                    None => return Err(AddError::InvalidEntity(host.to_string())),
+                }
+            } else if !utils::authority::is_valid_host(host) {
                 return Err(AddError::InvalidEntity(host.to_string()));
             }
             if self.allowed_hosts.contains(host) {
