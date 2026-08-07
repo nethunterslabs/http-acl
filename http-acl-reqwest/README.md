@@ -8,6 +8,8 @@ Systems which allow users to create arbitrary HTTP requests or specify arbitrary
 
 This crate provides a simple ACL to allow you to specify which hosts, ports, and IP ranges are allowed to be accessed. The ACL can then be used to ensure that the user's request meets the ACL's requirements before the request is made.
 
+Not using reqwest? See the [`http-acl`](https://docs.rs/http-acl) documentation for how to integrate the underlying ACL with a different HTTP client.
+
 ## What it checks
 
 `HttpAclMiddleware` checks a request's scheme, method, host or IP, port, headers, and URL path, in that order, plus any custom `ValidateFn` you've attached to the ACL, denying on the first check that fails. See the [`http-acl`](https://docs.rs/http-acl) documentation for how the allow list, deny list, and per-category default combine for each of these.

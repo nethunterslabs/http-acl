@@ -69,6 +69,92 @@ Allow-list entries (including wildcard ones) are always checked before deny-list
 
 A host can be pinned to a fixed address with `add_static_dns_mapping`, or `add_trusted_static_dns_mapping` if that address should bypass the IP/port ACL entirely. This is enforced by whichever DNS resolver a consuming crate wires up (e.g. `http-acl-reqwest`'s); `http-acl` itself only holds the mappings and exposes `resolve_static_dns_mapping`/`resolve_trusted_static_dns_mapping` for a consumer to look them up.
 
+## Integrating with a different HTTP client
+
+`http-acl` is client-agnostic: it only classifies requests, it never makes them or touches the network itself. [`http-acl-reqwest`](https://docs.rs/http-acl-reqwest) is one integration, for [reqwest](https://docs.rs/reqwest); wiring up another client (`hyper`, `ureq`, `isahc`, or your own) means covering the same three places yourself.
+
+**1. Before the request is sent**, check whatever you can read off the request as built:
+
+```rust
+use http_acl::{
+    HttpAcl,
+    utils::authority::{Authority, Host},
+};
+
+fn check_request(
+    acl: &HttpAcl,
+    scheme: &str,
+    method: &str,
+    authority: &str,
+    headers: &[(&str, &str)],
+    url_path: &str,
+    body: Option<&[u8]>,
+) -> Result<(), String> {
+    if acl.is_scheme_allowed(scheme).is_denied() {
+        return Err(format!("scheme {scheme} is denied"));
+    }
+    if acl.is_method_allowed(method).is_denied() {
+        return Err(format!("method {method} is denied"));
+    }
+
+    let authority = Authority::parse(authority).map_err(|_| "invalid host".to_string())?;
+    match &authority.host {
+        Host::Ip(ip) if acl.is_ip_allowed(ip).is_denied() => {
+            return Err(format!("ip {ip} is denied"));
+        }
+        Host::Domain(domain) if acl.is_host_allowed(domain).is_denied() => {
+            return Err(format!("host {domain} is denied"));
+        }
+        _ => {}
+    }
+    if acl.is_port_allowed(authority.port).is_denied() {
+        return Err(format!("port {} is denied", authority.port));
+    }
+    for (name, value) in headers.iter().copied() {
+        if acl.is_header_allowed(name, value).is_denied() {
+            return Err(format!("header {name} is denied"));
+        }
+    }
+    if acl.is_url_path_allowed(url_path).is_denied() {
+        return Err(format!("path {url_path} is denied"));
+    }
+    if acl
+        .is_valid(scheme, &authority, headers.iter().copied(), body)
+        .is_denied()
+    {
+        return Err("request failed custom validation".to_string());
+    }
+
+    Ok(())
+}
+
+fn main() {
+    let acl = HttpAcl::builder()
+        .add_denied_host("example.com".to_string())
+        .unwrap()
+        .build();
+
+    let result = check_request(
+        &acl,
+        "https",
+        "GET",
+        "example.com:443",
+        &[("accept", "*/*")],
+        "/",
+        None,
+    );
+    assert!(result.is_err());
+}
+```
+
+`is_url_path_allowed` expects a percent-decoded path; most URL types (including `url::Url`, which both `http-acl` and `reqwest` use) return the path percent-encoded, so decode it first if it might contain encoded characters.
+
+**2. At DNS resolution**, if your client lets you plug in a resolver, filter what it returns rather than trusting the host check in step 1 alone: a domain that passes `is_host_allowed` can still resolve to a denied or private IP, which is the classic SSRF vector this crate exists for. Check `resolve_trusted_static_dns_mapping` first and return it as-is if present, then `resolve_static_dns_mapping` and check it against `is_ip_allowed`/`is_port_allowed`, then fall back to real resolution and filter those results the same way. `http-acl-reqwest`'s `HttpAclDnsResolver` does exactly this and is a reasonable template to copy.
+
+**3. On redirects**, a request to an allowed host can still be redirected to a denied one. If your client follows redirects internally, look for a hook to intercept each hop (like reqwest's `redirect::Policy::custom`, which `http-acl-reqwest`'s `HttpAclMiddleware::redirect_policy` uses) and re-run the checks from step 1 against the new URL; otherwise disable automatic redirects and follow them yourself, checking each hop before you do.
+
+A client that doesn't give you a hook for one of these three only leaves you able to protect against what's within reach of the other two.
+
 ## Documentation
 
 See [docs.rs](https://docs.rs/http-acl).
