@@ -127,11 +127,16 @@ impl Middleware for HttpAclMiddleware {
                 }
             }
 
-            let acl_url_path_match = self.acl.is_url_path_allowed(req.url().path());
+            // `Url::path()` is percent-encoded; `is_url_path_allowed` expects a
+            // decoded path.
+            let url_path = percent_encoding::percent_decode_str(req.url().path())
+                .decode_utf8()
+                .map_err(|_| Error::Middleware(anyhow!("invalid URL path encoding")))?;
+            let acl_url_path_match = self.acl.is_url_path_allowed(&url_path);
             if acl_url_path_match.is_denied() {
                 return Err(Error::Middleware(anyhow!(
                     "path {} is denied - {}",
-                    req.url().path(),
+                    url_path,
                     acl_url_path_match
                 )));
             }
@@ -307,6 +312,36 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn test_middleware_decodes_percent_encoded_path() {
+        let acl = HttpAcl::builder()
+            .add_allowed_host("example.com".to_string())
+            .unwrap()
+            .add_denied_url_path("/secret file".to_string())
+            .unwrap()
+            .build();
+
+        let middleware = HttpAclMiddleware::new(acl);
+
+        let client =
+            reqwest_middleware::ClientBuilder::new(reqwest::Client::builder().build().unwrap())
+                .with(middleware)
+                .build();
+
+        // Regression test: `Url::path()` is percent-encoded ("%20" for the space
+        // here), but `is_url_path_allowed` matches against the decoded path, so the
+        // middleware must decode before checking - otherwise this denied path would
+        // never match and the request would go through.
+        let request = client.get("http://example.com/secret%20file").send().await;
+
+        assert!(request.is_err());
+        assert!(
+            request
+                .unwrap_err()
+                .to_string()
+                .contains("path /secret file is denied")
+        );
+    }
     #[tokio::test]
     async fn test_dns_resolver_resolves_hostnames() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};

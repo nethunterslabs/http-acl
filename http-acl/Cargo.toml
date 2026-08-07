@@ -13,6 +13,7 @@ keywords.workspace = true
 hashbrown = { workspace = true, optional = true }
 ipnet = { workspace = true }
 matchit = { workspace = true }
+percent-encoding = { workspace = true }
 serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
 url = { workspace = true }
