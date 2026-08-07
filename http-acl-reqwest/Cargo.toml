@@ -20,4 +20,4 @@ reqwest-middleware = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["net", "io-util"] }

@@ -165,8 +165,9 @@ struct GaiResolver;
 impl Resolve for GaiResolver {
     fn resolve(&self, name: Name) -> Resolving {
         Box::pin(async move {
-            let addresses = name
-                .as_str()
+            // `Name` is a bare hostname with no port, so `ToSocketAddrs` must be given one
+            // explicitly (e.g. via a tuple) - calling it on the string directly always fails.
+            let addresses = (name.as_str(), 0)
                 .to_socket_addrs()
                 .map_err(|e| Box::new(e) as BoxError)?;
             Ok(Box::new(addresses.into_iter()) as Box<dyn Iterator<Item = SocketAddr> + Send>)
@@ -276,5 +277,50 @@ mod tests {
             request.unwrap_err().to_string(),
             "host example.com is denied - The entity is denied according to the denied ACL."
         );
+    }
+
+    #[tokio::test]
+    async fn test_dns_resolver_resolves_hostnames() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf).await;
+                let response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+                let _ = socket.write_all(response.as_bytes()).await;
+            }
+        });
+
+        let acl = HttpAcl::builder()
+            .non_global_ip_ranges(true)
+            .ip_acl_default(true)
+            .port_acl_default(true)
+            .host_acl_default(true)
+            .build();
+
+        let middleware = HttpAclMiddleware::new(acl);
+
+        let client = reqwest_middleware::ClientBuilder::new(
+            reqwest::Client::builder()
+                .dns_resolver(middleware.dns_resolver())
+                .build()
+                .unwrap(),
+        )
+        .with(middleware)
+        .build();
+
+        // Regression test: the default `GaiResolver` used to call `to_socket_addrs()` on a
+        // bare hostname (no port), which always errors, so *no* hostname could ever resolve.
+        let request = client
+            .get(format!("http://localhost:{}/", addr.port()))
+            .send()
+            .await;
+
+        assert!(request.is_ok(), "{:?}", request.err());
     }
 }
