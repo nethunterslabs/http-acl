@@ -19,6 +19,7 @@ percent-encoding = { workspace = true }
 reqwest = { workspace = true }
 reqwest-middleware = { workspace = true }
 thiserror = { workspace = true }
+url = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["net", "io-util"] }

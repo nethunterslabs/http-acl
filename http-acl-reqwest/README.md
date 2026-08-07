@@ -13,6 +13,8 @@ This crate provides a simple ACL to allow you to specify which hosts, ports, and
     <strong>Warning:</strong>
     <br>
     The DNS resolver needs to be set on the reqwest Client to ensure that the ACL is enforced. If the DNS resolver is not set, the ACL will not be enforced on IP addresses resolved by the DNS resolver.
+    <br><br>
+    The redirect policy also needs to be set on the reqwest Client. By default reqwest follows HTTP redirects internally before the middleware ever sees them, so a redirect to a denied host or IP (e.g. an internal address) would otherwise bypass the ACL entirely.
   </blockquote>
 </div>
 
@@ -34,9 +36,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create the HTTP ACL middleware
     let middleware = HttpAclMiddleware::new(acl.clone());
 
-    // Create a reqwest client with the DNS resolver
+    // Create a reqwest client with the DNS resolver and redirect policy
     let client = Client::builder()
         .dns_resolver(middleware.dns_resolver())
+        .redirect(middleware.redirect_policy())
         .build()
         .unwrap();
 

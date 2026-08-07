@@ -11,6 +11,7 @@ use http_acl::utils::authority::{Authority, Host};
 use reqwest::{
     Request, Response,
     dns::{Name, Resolve, Resolving},
+    redirect,
 };
 use reqwest_middleware::{Error, Middleware, Next};
 use thiserror::Error;
@@ -18,30 +19,149 @@ use thiserror::Error;
 pub use http_acl::{self, HttpAcl, HttpAclBuilder};
 
 #[derive(Debug, Clone)]
-/// A reqwest middleware that enforces an HTTP ACL.
+/// A reqwest middleware that enforces an [`HttpAcl`].
+///
+/// On each request, checks (in order) the scheme, method, host or IP, port, headers,
+/// URL path, and finally any custom `ValidateFn`, returning
+/// [`reqwest_middleware::Error::Middleware`] on the first denial. This alone only
+/// covers the request as originally built: attach [`Self::dns_resolver`] to the
+/// `Client` as well, so domains are checked against the ACL as they resolve, and
+/// [`Self::redirect_policy`], so redirect targets are checked too. See the crate-level
+/// documentation for a full example wiring all three together.
 pub struct HttpAclMiddleware {
     acl: Arc<HttpAcl>,
 }
 
 impl HttpAclMiddleware {
-    /// Create a new HTTP ACL middleware.
+    /// Create a new HTTP ACL middleware from an already-built [`HttpAcl`].
     pub fn new(acl: HttpAcl) -> Self {
         Self { acl: Arc::new(acl) }
     }
 
-    /// Get the ACL.
+    /// Get the [`HttpAcl`] this middleware enforces.
     pub fn acl(&self) -> Arc<HttpAcl> {
         self.acl.clone()
     }
 
-    /// Create a DNS resolver that enforces the ACL.
+    /// Create a DNS resolver that enforces the ACL, using `getaddrinfo` to actually
+    /// resolve hostnames.
+    ///
+    /// Set via `Client::builder().dns_resolver(...)`. Without this, a domain that
+    /// resolves to a denied or non-global IP (the classic SSRF vector) is never
+    /// checked, since [`HttpAclMiddleware`] only ever sees the request as built, not
+    /// the address it eventually connects to.
     pub fn dns_resolver(&self) -> Arc<HttpAclDnsResolver> {
         Arc::new(HttpAclDnsResolver::new(self))
     }
 
-    /// Create a DNS resolver that enforces the ACL with a custom DNS resolver.
+    /// Same as [`Self::dns_resolver`], but delegating actual resolution to a custom
+    /// [`Resolve`] implementation instead of `getaddrinfo`.
     pub fn with_dns_resolver(&self, dns_resolver: Arc<dyn Resolve>) -> Arc<HttpAclDnsResolver> {
         Arc::new(HttpAclDnsResolver::with_dns_resolver(self, dns_resolver))
+    }
+
+    /// Create a [`redirect::Policy`] that enforces the ACL on every redirect hop.
+    ///
+    /// # Why this is necessary
+    ///
+    /// `HttpAclMiddleware` only validates the request it is given. By default `reqwest`
+    /// follows HTTP redirects internally (up to 10 hops) before control ever returns to
+    /// the middleware chain, so a server an allowed host redirects to - e.g. a `302` to
+    /// `http://169.254.169.254/` - is never re-checked against the ACL. Set this policy
+    /// on the `Client` (in addition to [`Self::dns_resolver`]) to close that gap:
+    ///
+    /// ```no_run
+    /// # use http_acl_reqwest::HttpAclMiddleware;
+    /// # use http_acl::HttpAcl;
+    /// # let middleware = HttpAclMiddleware::new(HttpAcl::builder().build());
+    /// let client = reqwest::Client::builder()
+    ///     .dns_resolver(middleware.dns_resolver())
+    ///     .redirect(middleware.redirect_policy())
+    ///     .build()
+    ///     .unwrap();
+    /// ```
+    ///
+    /// Uses a maximum of 10 redirects, matching `reqwest`'s own default. Use
+    /// [`Self::redirect_policy_with_max`] to customise this.
+    ///
+    /// # Limitations
+    ///
+    /// Only the scheme, host/IP, port, and URL path of each redirect target can be
+    /// checked this way - `reqwest`'s redirect policy does not expose the headers or
+    /// body of the redirected request, so denied headers, denied bodies, and any custom
+    /// `validate_fn` are not re-evaluated per hop.
+    pub fn redirect_policy(&self) -> redirect::Policy {
+        self.redirect_policy_with_max(10)
+    }
+
+    /// Same as [`Self::redirect_policy`], but with a custom maximum number of redirects.
+    pub fn redirect_policy_with_max(&self, max_redirects: usize) -> redirect::Policy {
+        let acl = self.acl.clone();
+        redirect::Policy::custom(move |attempt| {
+            // `Attempt::error`/`follow`/`stop` consume `attempt` by value, so the denial
+            // reason (if any) is computed into an owned `String` first, in its own scope,
+            // to release the borrow of `attempt` held by `attempt.url()`/`attempt.previous()`.
+            let deny_reason = 'reason: {
+                if attempt.previous().len() > max_redirects {
+                    break 'reason Some("too many redirects".to_string());
+                }
+
+                let url = attempt.url();
+
+                let scheme = url.scheme();
+                if acl.is_scheme_allowed(scheme).is_denied() {
+                    break 'reason Some(format!("scheme {scheme} is denied"));
+                }
+
+                let Some(host) = url.host() else {
+                    break 'reason Some("missing host".to_string());
+                };
+
+                match host {
+                    url::Host::Domain(domain) => {
+                        if acl.is_host_allowed(domain).is_denied() {
+                            break 'reason Some(format!("host {domain} is denied"));
+                        }
+                    }
+                    url::Host::Ipv4(ip) => {
+                        let ip = std::net::IpAddr::V4(ip);
+                        if acl.is_ip_allowed(&ip).is_denied() {
+                            break 'reason Some(format!("ip {ip} is denied"));
+                        }
+                    }
+                    url::Host::Ipv6(ip) => {
+                        let ip = std::net::IpAddr::V6(ip);
+                        if acl.is_ip_allowed(&ip).is_denied() {
+                            break 'reason Some(format!("ip {ip} is denied"));
+                        }
+                    }
+                }
+
+                if let Some(port) = url.port_or_known_default()
+                    && acl.is_port_allowed(port).is_denied()
+                {
+                    break 'reason Some(format!("port {port} is denied"));
+                }
+
+                // `Url::path()` is percent-encoded; `is_url_path_allowed` expects a
+                // decoded path.
+                match percent_encoding::percent_decode_str(url.path()).decode_utf8() {
+                    Ok(path) => {
+                        if acl.is_url_path_allowed(&path).is_denied() {
+                            break 'reason Some(format!("path {path} is denied"));
+                        }
+                    }
+                    Err(_) => break 'reason Some("invalid URL path encoding".to_string()),
+                }
+
+                None
+            };
+
+            match deny_reason {
+                Some(reason) => attempt.error(std::io::Error::other(reason)),
+                None => attempt.follow(),
+            }
+        })
     }
 }
 
@@ -431,5 +551,55 @@ mod tests {
         let request = client.get("http://trusted.internal/").send().await;
 
         assert!(request.is_ok(), "{:?}", request.err());
+    }
+
+    #[tokio::test]
+    async fn test_redirect_policy_blocks_disallowed_target() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf).await;
+                let response = "HTTP/1.1 302 Found\r\nLocation: http://192.168.1.1/\r\nContent-Length: 0\r\n\r\n";
+                let _ = socket.write_all(response.as_bytes()).await;
+            }
+        });
+
+        // Allow everything except one specific (non-global) IP, so the initial request to
+        // our local mock server succeeds but the redirect target is denied.
+        let acl = HttpAcl::builder()
+            .non_global_ip_ranges(true)
+            .ip_acl_default(true)
+            .port_acl_default(true)
+            .add_denied_ip_range((
+                "192.168.1.1".parse::<std::net::IpAddr>().unwrap(),
+                "192.168.1.1".parse::<std::net::IpAddr>().unwrap(),
+            ))
+            .unwrap()
+            .build();
+
+        let middleware = HttpAclMiddleware::new(acl);
+
+        let client = reqwest_middleware::ClientBuilder::new(
+            reqwest::Client::builder()
+                .dns_resolver(middleware.dns_resolver())
+                .redirect(middleware.redirect_policy())
+                .build()
+                .unwrap(),
+        )
+        .with(middleware)
+        .build();
+
+        let request = client
+            .get(format!("http://127.0.0.1:{}/", addr.port()))
+            .send()
+            .await;
+
+        assert!(request.is_err());
     }
 }
