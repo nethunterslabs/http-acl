@@ -2,7 +2,12 @@
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
-/// Checks if a host is valid or if it is a valid IP address.
+/// Returns whether `host` is a valid domain, IP address, or `host:port`/`ip:port`
+/// pair.
+///
+/// This accepts a literal host string, not a wildcard pattern such as
+/// `*.example.com`; see [`HttpAclBuilder::add_allowed_host`](crate::HttpAclBuilder::add_allowed_host)
+/// for wildcard syntax.
 pub fn is_valid_host(host: &str) -> bool {
     host.parse::<std::net::SocketAddr>().is_ok()
         || host.parse::<IpAddr>().is_ok()
@@ -219,7 +224,11 @@ impl std::fmt::Display for AuthorityError {
 }
 
 impl Authority {
-    /// Parses an authority from a string.
+    /// Parses an authority (host, and optional port) from a string.
+    ///
+    /// Accepts a bare IP address, a `host:port` or `[ipv6]:port` pair, or a bare
+    /// domain, in that order; the port defaults to `0` when omitted. Returns
+    /// [`AuthorityError::InvalidHost`] if none of those forms match.
     pub fn parse(authority: &str) -> Result<Self, AuthorityError> {
         if let Ok(addr) = authority.parse::<std::net::SocketAddr>() {
             return Ok(Self {

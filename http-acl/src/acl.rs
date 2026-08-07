@@ -1,5 +1,15 @@
 //! Contains the [`HttpAcl`], [`HttpAclBuilder`],
 //! and related types.
+//!
+//! Each category an [`HttpAcl`] checks (scheme, method, host, port, IP, header, URL
+//! path) is evaluated the same way: the allow-list is checked first, then the
+//! deny-list, and if neither matches, the category's configured default (set via
+//! e.g. [`HttpAclBuilder::host_acl_default`]) decides the outcome. The allow-list
+//! always wins over the deny-list, so a broad allow entry can shadow a narrower deny
+//! entry in the same category. Every check returns an [`AclClassification`] rather
+//! than a plain `bool`, so callers can tell *why* something was allowed or denied;
+//! use [`AclClassification::is_allowed`]/[`AclClassification::is_denied`] where only
+//! the outcome matters.
 
 #[cfg(feature = "hashbrown")]
 use hashbrown::{HashMap, HashSet, hash_map::Entry};
@@ -24,6 +34,17 @@ use crate::{
 };
 
 /// A function that validates an HTTP request against an ACL.
+///
+/// Called by [`HttpAcl::is_valid`] with the request's scheme, authority (host and
+/// port), headers, and optional body, in that order. It is the only hook for checks
+/// that don't fit the built-in categories (e.g. inspecting the body, or applying
+/// custom cross-field logic). Return [`AclClassification::DeniedUserAcl`] or
+/// [`AclClassification::Denied`] to reject the request, or
+/// [`AclClassification::AllowedDefault`] to let it through.
+///
+/// A `ValidateFn` is attached via [`HttpAclBuilder::build_full`] or
+/// [`HttpAclBuilder::try_build_full`] rather than a dedicated builder setter, since
+/// it is typically a closure that captures state from outside the builder.
 pub type ValidateFn = Arc<
     dyn for<'h> Fn(
             &str,
@@ -37,6 +58,12 @@ pub type ValidateFn = Arc<
 
 #[derive(Clone)]
 /// Represents an HTTP ACL.
+///
+/// Built via [`HttpAcl::builder`] (an [`HttpAclBuilder`]) rather than constructed
+/// directly. Once built, an `HttpAcl` is immutable; the various `is_*_allowed`
+/// methods check a single aspect of a request (scheme, method, host, port, IP,
+/// header, or URL path) and return an [`AclClassification`]. See the module-level
+/// documentation for how allow-lists, deny-lists, and per-category defaults combine.
 pub struct HttpAcl {
     allow_http: bool,
     allow_https: bool,
@@ -178,6 +205,12 @@ impl HttpAcl {
     }
 
     /// Returns whether the scheme is allowed.
+    ///
+    /// Unlike the other `is_*_allowed` methods, this is a plain per-scheme flag (set
+    /// via [`HttpAclBuilder::http`]/[`HttpAclBuilder::https`]) rather than an
+    /// allow/deny/default check, so it only ever returns
+    /// [`AclClassification::AllowedUserAcl`] or [`AclClassification::DeniedUserAcl`].
+    /// Any scheme other than `"http"`/`"https"` is denied.
     pub fn is_scheme_allowed(&self, scheme: &str) -> AclClassification {
         if scheme == "http" && self.allow_http || scheme == "https" && self.allow_https {
             AclClassification::AllowedUserAcl
@@ -238,6 +271,11 @@ impl HttpAcl {
     }
 
     /// Returns whether an IP is allowed.
+    ///
+    /// A non-global IP (private, loopback, link-local, and other special-use
+    /// addresses) is denied with [`AclClassification::DeniedNotGlobal`] before the
+    /// allow/deny lists are even checked, unless
+    /// [`HttpAclBuilder::non_global_ip_ranges`] was set to `true`.
     pub fn is_ip_allowed(&self, ip: &IpAddr) -> AclClassification {
         if !utils::ip::is_global_ip(ip) && !self.allow_non_global_ip_ranges {
             AclClassification::DeniedNotGlobal
@@ -314,7 +352,11 @@ impl HttpAcl {
         }
     }
 
-    /// Returns whether a request is valid.
+    /// Runs the [`ValidateFn`] attached to this ACL, if any, against a request.
+    ///
+    /// Returns [`AclClassification::AllowedDefault`] when no `ValidateFn` was
+    /// attached (the default for an `HttpAcl` built without one), so calling this is
+    /// always safe even if you never configured custom validation.
     pub fn is_valid<'h>(
         &self,
         scheme: &str,
@@ -340,7 +382,12 @@ impl HttpAcl {
     }
 }
 
-/// Represents an ACL Classification.
+/// Represents the outcome of an ACL check, and why it was reached.
+///
+/// Every `is_*_allowed` method on [`HttpAcl`] returns one of these instead of a plain
+/// `bool`, so the reason for an outcome is preserved for logging or error messages.
+/// Use [`Self::is_allowed`] or [`Self::is_denied`] to collapse it to a `bool` once you
+/// only care about the outcome.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum AclClassification {
@@ -352,7 +399,10 @@ pub enum AclClassification {
     DeniedUserAcl,
     /// The entity is denied because the default is to deny if no ACL match is found.
     DeniedDefault,
-    /// The entity is denied.
+    /// The entity is denied for a custom reason.
+    ///
+    /// Not produced by any built-in check; this exists for a [`ValidateFn`] to return
+    /// a denial with a human-readable explanation of its own.
     Denied(String),
     /// The IP is denied because it is not global.
     DeniedNotGlobal,
@@ -468,6 +518,19 @@ impl HttpRequestMethod {
 }
 
 /// A builder for [`HttpAcl`].
+///
+/// Most categories (methods, hosts, port ranges, IP ranges, headers, URL paths,
+/// static DNS mappings) follow the same set of methods: `add_allowed_*`/
+/// `add_denied_*` to add a single entry, `remove_allowed_*`/`remove_denied_*` to
+/// remove one, `allowed_*`/`denied_*` to replace the whole list at once, and
+/// `clear_allowed_*`/`clear_denied_*` to empty it. The fallible variants return
+/// [`AddError`] rather than panicking, e.g. when an entry is already present on the
+/// opposite list, so a host (or header, port range, and so on) can never end up
+/// allowed and denied at the same time.
+///
+/// Call [`Self::build`] or [`Self::try_build`] to finish. Only the latter validates
+/// the finished configuration (uniqueness, overlaps, non-global IP ranges); see
+/// their docs for when each applies.
 #[derive(Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct HttpAclBuilder {
@@ -1505,12 +1568,21 @@ impl HttpAclBuilder {
         self
     }
 
-    /// Builds the [`HttpAcl`].
+    /// Builds the [`HttpAcl`], without a [`ValidateFn`].
+    ///
+    /// This does not validate the configuration (uniqueness, overlaps, non-global IP
+    /// ranges); use [`Self::try_build`] instead if the builder wasn't assembled
+    /// entirely through this type's own fallible `add_*`/`allowed_*`/`denied_*`
+    /// methods, e.g. if it was deserialized. See [`Self::try_build`] for details.
     pub fn build(self) -> HttpAcl {
         self.build_full(None)
     }
 
-    /// Builds the [`HttpAcl`].
+    /// Builds the [`HttpAcl`] with a [`ValidateFn`] attached.
+    ///
+    /// This is the only way to attach a `ValidateFn`; there is no dedicated builder
+    /// setter for it. Like [`Self::build`], this does not validate the configuration;
+    /// use [`Self::try_build_full`] for that.
     pub fn build_full(self, validate_fn: Option<ValidateFn>) -> HttpAcl {
         HttpAcl {
             allow_http: self.allow_http,
@@ -1568,8 +1640,22 @@ impl HttpAclBuilder {
         }
     }
 
-    /// Builds the [`HttpAcl`] and returns an error if the configuration is invalid.
-    /// This is used for deserialized ACLs as the URL Path Routers need to be built.
+    /// Builds the [`HttpAcl`] with a [`ValidateFn`] attached, validating the
+    /// configuration first.
+    ///
+    /// Checks each category for unique entries, non-overlapping ranges, and no host
+    /// (or port range, IP range, header, and so on) present on both the allowed and
+    /// denied lists, returning [`AddError`] on the first problem found. It also
+    /// enforces that IP ranges are global unless [`Self::non_global_ip_ranges`] was
+    /// set to `true`, which [`Self::add_allowed_ip_range`]/
+    /// [`Self::add_denied_ip_range`] do not check themselves.
+    ///
+    /// Prefer this over [`Self::build_full`] whenever the builder wasn't assembled
+    /// entirely through this type's own fallible methods, most notably a builder
+    /// deserialized from an untrusted source: deserialization writes fields directly
+    /// and bypasses the checks each `add_*` method normally performs, so this is also
+    /// what rebuilds the URL path routers and wildcard host patterns skipped for that
+    /// reason.
     pub fn try_build_full(mut self, validate_fn: Option<ValidateFn>) -> Result<HttpAcl, AddError> {
         if !utils::has_unique_elements(&self.allowed_methods) {
             return Err(AddError::NotUnique(
@@ -1796,8 +1882,9 @@ impl HttpAclBuilder {
         Ok(self.build_full(validate_fn))
     }
 
-    /// Builds the [`HttpAcl`] and returns an error if the configuration is invalid.
-    /// This is used for deserialized ACLs as the URL Path Routers need to be built.
+    /// Builds the [`HttpAcl`], without a [`ValidateFn`], validating the
+    /// configuration first. See [`Self::try_build_full`] for what is validated and
+    /// when to prefer this over [`Self::build`].
     pub fn try_build(self) -> Result<HttpAcl, AddError> {
         self.try_build_full(None)
     }

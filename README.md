@@ -8,6 +8,17 @@ Systems which allow users to create arbitrary HTTP requests or specify arbitrary
 
 This crate provides a simple ACL to allow you to specify which hosts, ports, and IP ranges are allowed to be accessed. The ACL can then be used to ensure that the user's request meets the ACL's requirements before the request is made.
 
+## Crates in this repository
+
+- [`http-acl`](http-acl) - the core ACL type, independent of any HTTP client. Start here, and see its README for how to integrate it with a client other than reqwest.
+- [`http-acl-reqwest`](http-acl-reqwest) - middleware and a DNS resolver that enforce an `http-acl` ACL on a [reqwest](https://docs.rs/reqwest) client, including redirect targets.
+
+## What it checks
+
+An `HttpAcl` can check a request's scheme, method, host, port, IP, headers, and URL path, plus any custom logic you supply as a `ValidateFn`. Each of these (other than scheme, which is a simple allow/deny flag per protocol) is evaluated the same way: the allow list is checked first, then the deny list, and if neither matches, a per-category default decides the outcome. Methods, hosts, ports, and IPs deny by default; headers and URL paths allow by default. Every check returns an `AclClassification` rather than a plain boolean, so you can see why a request was allowed or denied, not just whether it was; call `.is_allowed()`/`.is_denied()` on it once only the outcome matters.
+
+Non-global IP addresses (private, loopback, link-local, and other special-use ranges) are denied outright regardless of the IP allow/deny lists, unless you opt in with `.non_global_ip_ranges(true)` on the builder.
+
 ## Usage
 
 ```rust
@@ -65,4 +76,4 @@ A host can be pinned to a fixed address with `add_static_dns_mapping`, or `add_t
 
 ## Documentation
 
-See [docs.rs](https://docs.rs/http-acl).
+See [docs.rs](https://docs.rs/http-acl) for `http-acl`, and [docs.rs](https://docs.rs/http-acl-reqwest) for `http-acl-reqwest`.

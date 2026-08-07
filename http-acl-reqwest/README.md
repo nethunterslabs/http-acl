@@ -8,6 +8,12 @@ Systems which allow users to create arbitrary HTTP requests or specify arbitrary
 
 This crate provides a simple ACL to allow you to specify which hosts, ports, and IP ranges are allowed to be accessed. The ACL can then be used to ensure that the user's request meets the ACL's requirements before the request is made.
 
+## What it checks
+
+`HttpAclMiddleware` checks a request's scheme, method, host or IP, port, headers, and URL path, in that order, plus any custom `ValidateFn` you've attached to the ACL, denying on the first check that fails. See the [`http-acl`](https://docs.rs/http-acl) documentation for how the allow list, deny list, and per-category default combine for each of these.
+
+That covers the request as originally built, which on its own is not enough: a request to an allowed host can still reach a denied address if the hostname resolves to one, or if the server redirects there. Wire up the DNS resolver and redirect policy below to close both gaps.
+
 <div class="warning">
   <blockquote style="background:rgba(255,229,100,0.2);padding:0.75em;margin:0.2em;">
     <strong>Warning:</strong>

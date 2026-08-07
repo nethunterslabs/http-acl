@@ -317,7 +317,7 @@ pub struct HttpAclDnsResolver {
 }
 
 impl HttpAclDnsResolver {
-    /// Create a new ACL resolver.
+    /// Create a new ACL resolver that resolves hostnames via `getaddrinfo`.
     pub fn new(middleware: &HttpAclMiddleware) -> Self {
         Self {
             dns_resolver: Arc::new(GaiResolver),
@@ -325,7 +325,8 @@ impl HttpAclDnsResolver {
         }
     }
 
-    /// Create a new ACL resolver with a custom DNS resolver.
+    /// Create a new ACL resolver that delegates actual resolution to a custom
+    /// [`Resolve`] implementation.
     pub fn with_dns_resolver(
         middleware: &HttpAclMiddleware,
         dns_resolver: Arc<dyn Resolve>,

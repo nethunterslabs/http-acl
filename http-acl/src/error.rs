@@ -6,7 +6,9 @@ use std::ops::RangeInclusive;
 
 use thiserror::Error;
 
-/// Represents an error that can occur when adding a new allowed or denied entity to an ACL.
+/// Represents an error that can occur when adding a new allowed or denied entity to
+/// an ACL, or when [`HttpAclBuilder::try_build`](crate::HttpAclBuilder::try_build)
+/// finds the finished configuration inconsistent.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Error)]
 pub enum AddError {
