@@ -340,7 +340,9 @@ impl HttpAclDnsResolver {
 impl Resolve for HttpAclDnsResolver {
     fn resolve(&self, name: Name) -> Resolving {
         if self.acl.is_host_allowed(name.as_str()).is_denied() {
-            let err: BoxError = Box::new(std::io::Error::other("Host denied by ACL"));
+            let err: BoxError = Box::new(HttpAclError::HostDenied {
+                host: name.as_str().to_string(),
+            });
             return Box::pin(future::ready(Err(err)));
         }
 
@@ -392,6 +394,10 @@ impl Resolve for HttpAclDnsResolver {
 
 #[derive(Error, Debug)]
 /// An error that can occur when resolving a host.
+///
+/// Returned by [`HttpAclDnsResolver`] when a hostname itself is denied by the ACL.
+/// Downcast the boxed error from a failed resolution to check for this specifically,
+/// as opposed to a lower-level resolution failure.
 pub enum HttpAclError {
     /// Host resolution denied by ACL.
     #[error("Host resolution denied by ACL: {host}")]
@@ -462,6 +468,32 @@ mod tests {
                 .contains("path /secret file is denied")
         );
     }
+
+    #[tokio::test]
+    async fn test_dns_resolver_returns_typed_error_for_denied_host() {
+        let acl = HttpAcl::builder()
+            .add_denied_host("denied.example.com".to_string())
+            .unwrap()
+            .build();
+
+        let middleware = HttpAclMiddleware::new(acl);
+        let resolver = middleware.dns_resolver();
+
+        let name: reqwest::dns::Name = "denied.example.com".parse().unwrap();
+        let err = match resolver.resolve(name).await {
+            Ok(_) => panic!("expected resolution to be denied"),
+            Err(e) => e,
+        };
+
+        let acl_err = err
+            .downcast_ref::<HttpAclError>()
+            .expect("expected a HttpAclError");
+        assert!(matches!(
+            acl_err,
+            HttpAclError::HostDenied { host } if host == "denied.example.com"
+        ));
+    }
+
     #[tokio::test]
     async fn test_dns_resolver_resolves_hostnames() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
