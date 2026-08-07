@@ -55,6 +55,9 @@ pub enum AddError {
     /// The static DNS mapping is already present.
     #[error("The static DNS mapping for `{0}`-`{1}` is already present.")]
     AlreadyPresentStaticDnsMapping(String, SocketAddr),
+    /// The trusted static DNS mapping is already present.
+    #[error("The trusted static DNS mapping for `{0}`-`{1}` is already present.")]
+    AlreadyPresentTrustedStaticDnsMapping(String, SocketAddr),
     /// The entity is not allowed or denied because it is invalid.
     #[error("The entity `{0}` is not allowed or denied because it is invalid.")]
     InvalidEntity(String),

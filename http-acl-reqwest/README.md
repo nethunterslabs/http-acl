@@ -52,6 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Static DNS mappings
+
+A hostname can be pinned to a fixed address via `add_static_dns_mapping` and `add_trusted_static_dns_mapping` on the `HttpAcl` builder. The former's resolved address is still checked against the IP/port ACL, like any other resolved address; the latter bypasses that check entirely, so only use it for a mapping you trust regardless of what the ACL would otherwise say (e.g. deliberately pinning a hostname to an internal address). Both need the DNS resolver above to be set to take effect.
+
 ## Documentation
 
 See [docs.rs](https://docs.rs/http-acl-reqwest).

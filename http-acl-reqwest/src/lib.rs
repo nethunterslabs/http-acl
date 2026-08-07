@@ -175,7 +175,17 @@ impl Resolve for GaiResolver {
     }
 }
 
-/// A DNS resolver that enforces an HTTP ACL.
+/// A [`Resolve`]r that checks each resolved address against an [`HttpAcl`] before
+/// handing it back to `reqwest`.
+///
+/// Denies the hostname itself first via [`HttpAcl::is_host_allowed`]. For the
+/// addresses it resolves to, a trusted static DNS mapping (see
+/// [`HttpAclBuilder::add_trusted_static_dns_mapping`]) is returned as-is; a regular
+/// static mapping or a genuinely resolved address is
+/// filtered through [`HttpAcl::is_ip_allowed`] and [`HttpAcl::is_port_allowed`], so
+/// only addresses the ACL permits are ever handed to `reqwest`. Constructed via
+/// [`HttpAclMiddleware::dns_resolver`] or [`HttpAclMiddleware::with_dns_resolver`],
+/// not directly.
 pub struct HttpAclDnsResolver {
     dns_resolver: Arc<dyn Resolve>,
     acl: Arc<HttpAcl>,
@@ -213,9 +223,27 @@ impl Resolve for HttpAclDnsResolver {
         let resolver = self.dns_resolver.clone();
 
         Box::pin(async move {
-            if let Some(tcp_address) = acl.resolve_static_dns_mapping(name.as_str()) {
+            if let Some(tcp_address) = acl.resolve_trusted_static_dns_mapping(name.as_str()) {
+                // Trusted mappings intentionally bypass the IP/port ACL - the caller
+                // vouches for this destination (e.g. pinning a hostname to an internal
+                // address on purpose).
                 Ok(Box::new(std::iter::once(tcp_address))
                     as Box<dyn Iterator<Item = SocketAddr> + Send>)
+            } else if let Some(tcp_address) = acl.resolve_static_dns_mapping(name.as_str()) {
+                // Regular static mappings must still pass the IP/port ACL, just like
+                // resolved addresses do below - otherwise they'd be a way to bypass it
+                // entirely (e.g. mapping a host to a private IP while non-global IPs
+                // are denied).
+                if acl.is_ip_allowed(&tcp_address.ip()).is_allowed()
+                    && acl.is_port_allowed(tcp_address.port()).is_allowed()
+                {
+                    Ok(Box::new(std::iter::once(tcp_address))
+                        as Box<dyn Iterator<Item = SocketAddr> + Send>)
+                } else {
+                    let err: BoxError =
+                        Box::new(std::io::Error::other("Static DNS mapping denied by ACL"));
+                    Err(err)
+                }
             } else {
                 let resolved = resolver.resolve(name).await;
                 match resolved {
@@ -320,6 +348,52 @@ mod tests {
             .get(format!("http://localhost:{}/", addr.port()))
             .send()
             .await;
+
+        assert!(request.is_ok(), "{:?}", request.err());
+    }
+
+    #[tokio::test]
+    async fn test_trusted_static_dns_mapping_bypasses_ip_port_acl() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf).await;
+                let response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+                let _ = socket.write_all(response.as_bytes()).await;
+            }
+        });
+
+        // Deny everything at the IP/port level (the default), but pin "trusted.internal"
+        // to our mock server via a *trusted* static mapping, which should bypass that.
+        let acl = HttpAcl::builder()
+            .host_acl_default(true)
+            .add_trusted_static_dns_mapping("trusted.internal".to_string(), addr)
+            .unwrap()
+            .build();
+
+        assert!(acl.is_ip_allowed(&addr.ip()).is_denied());
+        assert!(acl.is_port_allowed(addr.port()).is_denied());
+
+        let middleware = HttpAclMiddleware::new(acl);
+
+        let client = reqwest_middleware::ClientBuilder::new(
+            reqwest::Client::builder()
+                .dns_resolver(middleware.dns_resolver())
+                .build()
+                .unwrap(),
+        )
+        .with(middleware)
+        .build();
+
+        // No explicit port in the URL - the connector must pick up the trusted
+        // mapping's port, proving both the IP and port ACL were bypassed for it.
+        let request = client.get("http://trusted.internal/").send().await;
 
         assert!(request.is_ok(), "{:?}", request.err());
     }

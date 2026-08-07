@@ -59,6 +59,10 @@ A wildcard must occupy an entire label - `foo*.example.com` is rejected as an in
 
 Allow-list entries (including wildcard ones) are always checked before deny-list entries, so a broad wildcard allow can shadow a more specific deny - e.g. allowing `*.example.com` while denying `secret.example.com` still allows `secret.example.com`, since the wildcard allow matches first.
 
+## Static DNS mappings
+
+A host can be pinned to a fixed address with `add_static_dns_mapping`, or `add_trusted_static_dns_mapping` if that address should bypass the IP/port ACL entirely. This is enforced by whichever DNS resolver a consuming crate wires up (e.g. `http-acl-reqwest`'s); `http-acl` itself only holds the mappings and exposes `resolve_static_dns_mapping`/`resolve_trusted_static_dns_mapping` for a consumer to look them up.
+
 ## Documentation
 
 See [docs.rs](https://docs.rs/http-acl).

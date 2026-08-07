@@ -51,6 +51,7 @@ pub struct HttpAcl {
     allowed_ip_ranges: Box<[RangeInclusive<IpAddr>]>,
     denied_ip_ranges: Box<[RangeInclusive<IpAddr>]>,
     static_dns_mapping: HashMap<Box<str>, SocketAddr>,
+    trusted_static_dns_mapping: HashMap<Box<str>, SocketAddr>,
     allowed_headers: HashMap<Box<str>, Option<Box<str>>>,
     denied_headers: HashMap<Box<str>, Option<Box<str>>>,
     allowed_url_paths_router: Router<()>,
@@ -79,6 +80,10 @@ impl std::fmt::Debug for HttpAcl {
             .field("allowed_ip_ranges", &self.allowed_ip_ranges)
             .field("denied_ip_ranges", &self.denied_ip_ranges)
             .field("static_dns_mapping", &self.static_dns_mapping)
+            .field(
+                "trusted_static_dns_mapping",
+                &self.trusted_static_dns_mapping,
+            )
             .field("allowed_headers", &self.allowed_headers)
             .field("denied_headers", &self.denied_headers)
             .field(
@@ -108,6 +113,7 @@ impl PartialEq for HttpAcl {
             && self.allowed_ip_ranges == other.allowed_ip_ranges
             && self.denied_ip_ranges == other.denied_ip_ranges
             && self.static_dns_mapping == other.static_dns_mapping
+            && self.trusted_static_dns_mapping == other.trusted_static_dns_mapping
             && self.allowed_headers == other.allowed_headers
             && self.denied_headers == other.denied_headers
             && self.allow_non_global_ip_ranges == other.allow_non_global_ip_ranges
@@ -148,6 +154,7 @@ impl std::default::Default for HttpAcl {
             allowed_ip_ranges: Vec::new().into_boxed_slice(),
             denied_ip_ranges: Vec::new().into_boxed_slice(),
             static_dns_mapping: HashMap::new(),
+            trusted_static_dns_mapping: HashMap::new(),
             allowed_headers: HashMap::new(),
             denied_headers: HashMap::new(),
             allowed_url_paths_router: Router::new(),
@@ -245,11 +252,28 @@ impl HttpAcl {
         }
     }
 
-    /// Resolve static DNS mapping.
+    /// Resolve a static DNS mapping.
+    ///
+    /// The returned address is still subject to the IP and port ACL - callers must
+    /// check it with [`Self::is_ip_allowed`] and [`Self::is_port_allowed`] themselves.
+    /// Use [`Self::resolve_trusted_static_dns_mapping`] for mappings that should
+    /// bypass those checks entirely.
     ///
     /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn resolve_static_dns_mapping(&self, host: &str) -> Option<SocketAddr> {
         self.static_dns_mapping.get(host).copied()
+    }
+
+    /// Resolve a trusted static DNS mapping.
+    ///
+    /// Unlike [`Self::resolve_static_dns_mapping`], the returned address is meant to
+    /// bypass the IP and port ACL entirely - only use this for mappings you trust
+    /// regardless of what the ACL would otherwise say (e.g. pinning a hostname to an
+    /// internal address on purpose).
+    ///
+    /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
+    pub fn resolve_trusted_static_dns_mapping(&self, host: &str) -> Option<SocketAddr> {
+        self.trusted_static_dns_mapping.get(host).copied()
     }
 
     /// Returns whether a header is allowed.
@@ -462,6 +486,7 @@ pub struct HttpAclBuilder {
     allowed_ip_ranges: Vec<RangeInclusive<IpAddr>>,
     denied_ip_ranges: Vec<RangeInclusive<IpAddr>>,
     static_dns_mapping: HashMap<String, SocketAddr>,
+    trusted_static_dns_mapping: HashMap<String, SocketAddr>,
     allowed_headers: HashMap<String, Option<String>>,
     denied_headers: HashMap<String, Option<String>>,
     allowed_url_paths: Vec<String>,
@@ -493,6 +518,10 @@ impl std::fmt::Debug for HttpAclBuilder {
             .field("allowed_ip_ranges", &self.allowed_ip_ranges)
             .field("denied_ip_ranges", &self.denied_ip_ranges)
             .field("static_dns_mapping", &self.static_dns_mapping)
+            .field(
+                "trusted_static_dns_mapping",
+                &self.trusted_static_dns_mapping,
+            )
             .field("allowed_headers", &self.allowed_headers)
             .field("denied_headers", &self.denied_headers)
             .field("allowed_url_paths", &self.allowed_url_paths)
@@ -524,6 +553,7 @@ impl PartialEq for HttpAclBuilder {
             && self.allowed_ip_ranges == other.allowed_ip_ranges
             && self.denied_ip_ranges == other.denied_ip_ranges
             && self.static_dns_mapping == other.static_dns_mapping
+            && self.trusted_static_dns_mapping == other.trusted_static_dns_mapping
             && self.allowed_headers == other.allowed_headers
             && self.denied_headers == other.denied_headers
             && self.allowed_url_paths == other.allowed_url_paths
@@ -572,6 +602,7 @@ impl HttpAclBuilder {
             denied_url_paths_router: Router::new(),
             allow_non_global_ip_ranges: false,
             static_dns_mapping: HashMap::new(),
+            trusted_static_dns_mapping: HashMap::new(),
             method_acl_default: false,
             host_acl_default: false,
             port_acl_default: false,
@@ -1105,21 +1136,29 @@ impl HttpAclBuilder {
 
     /// Add a static DNS mapping.
     ///
+    /// The resolved address is still subject to the IP and port ACL. Use
+    /// [`Self::add_trusted_static_dns_mapping`] for a mapping that should bypass
+    /// those checks entirely.
+    ///
     /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
     pub fn add_static_dns_mapping(
         mut self,
         host: String,
         sock_addr: SocketAddr,
     ) -> Result<Self, AddError> {
-        if utils::authority::is_valid_host(&host) {
-            if let Entry::Vacant(e) = self.static_dns_mapping.entry(host.clone()) {
-                e.insert(sock_addr);
-                Ok(self)
-            } else {
-                Err(AddError::AlreadyPresentStaticDnsMapping(host, sock_addr))
-            }
+        if !utils::authority::is_valid_host(&host) {
+            return Err(AddError::InvalidEntity(host));
+        }
+        if self.trusted_static_dns_mapping.contains_key(&host) {
+            return Err(AddError::AlreadyPresentTrustedStaticDnsMapping(
+                host, sock_addr,
+            ));
+        }
+        if let Entry::Vacant(e) = self.static_dns_mapping.entry(host.clone()) {
+            e.insert(sock_addr);
+            Ok(self)
         } else {
-            Err(AddError::InvalidEntity(host))
+            Err(AddError::AlreadyPresentStaticDnsMapping(host, sock_addr))
         }
     }
 
@@ -1139,14 +1178,19 @@ impl HttpAclBuilder {
         mappings: HashMap<String, SocketAddr>,
     ) -> Result<Self, AddError> {
         for (host, ip) in &mappings {
-            if utils::authority::is_valid_host(host) {
-                if self.static_dns_mapping.contains_key(host) {
-                    return Err(AddError::AlreadyPresentStaticDnsMapping(host.clone(), *ip));
-                }
-                self.static_dns_mapping.insert(host.to_string(), *ip);
-            } else {
+            if !utils::authority::is_valid_host(host) {
                 return Err(AddError::InvalidEntity(host.clone()));
             }
+            if self.trusted_static_dns_mapping.contains_key(host) {
+                return Err(AddError::AlreadyPresentTrustedStaticDnsMapping(
+                    host.clone(),
+                    *ip,
+                ));
+            }
+            if self.static_dns_mapping.contains_key(host) {
+                return Err(AddError::AlreadyPresentStaticDnsMapping(host.clone(), *ip));
+            }
+            self.static_dns_mapping.insert(host.to_string(), *ip);
         }
         Ok(self)
     }
@@ -1154,6 +1198,75 @@ impl HttpAclBuilder {
     /// Clears the static DNS mappings.
     pub fn clear_static_dns_mappings(mut self) -> Self {
         self.static_dns_mapping.clear();
+        self
+    }
+
+    /// Add a trusted static DNS mapping.
+    ///
+    /// Unlike [`Self::add_static_dns_mapping`], the resolved address is meant to
+    /// bypass the IP and port ACL entirely - only use this for mappings you trust
+    /// regardless of what the ACL would otherwise say (e.g. pinning a hostname to an
+    /// internal address on purpose).
+    ///
+    /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
+    pub fn add_trusted_static_dns_mapping(
+        mut self,
+        host: String,
+        sock_addr: SocketAddr,
+    ) -> Result<Self, AddError> {
+        if !utils::authority::is_valid_host(&host) {
+            return Err(AddError::InvalidEntity(host));
+        }
+        if self.static_dns_mapping.contains_key(&host) {
+            return Err(AddError::AlreadyPresentStaticDnsMapping(host, sock_addr));
+        }
+        if let Entry::Vacant(e) = self.trusted_static_dns_mapping.entry(host.clone()) {
+            e.insert(sock_addr);
+            Ok(self)
+        } else {
+            Err(AddError::AlreadyPresentTrustedStaticDnsMapping(
+                host, sock_addr,
+            ))
+        }
+    }
+
+    /// Removes a trusted static DNS mapping.
+    ///
+    /// Note: The host should be in its canonical form (lowercase, punycode for IDN).
+    pub fn remove_trusted_static_dns_mapping(mut self, host: &str) -> Self {
+        self.trusted_static_dns_mapping.remove(host);
+        self
+    }
+
+    /// Sets the trusted static DNS mappings.
+    ///
+    /// Note: The hosts should be in their canonical form (lowercase, punycode for IDN).
+    pub fn trusted_static_dns_mappings(
+        mut self,
+        mappings: HashMap<String, SocketAddr>,
+    ) -> Result<Self, AddError> {
+        for (host, ip) in &mappings {
+            if !utils::authority::is_valid_host(host) {
+                return Err(AddError::InvalidEntity(host.clone()));
+            }
+            if self.static_dns_mapping.contains_key(host) {
+                return Err(AddError::AlreadyPresentStaticDnsMapping(host.clone(), *ip));
+            }
+            if self.trusted_static_dns_mapping.contains_key(host) {
+                return Err(AddError::AlreadyPresentTrustedStaticDnsMapping(
+                    host.clone(),
+                    *ip,
+                ));
+            }
+            self.trusted_static_dns_mapping
+                .insert(host.to_string(), *ip);
+        }
+        Ok(self)
+    }
+
+    /// Clears the trusted static DNS mappings.
+    pub fn clear_trusted_static_dns_mappings(mut self) -> Self {
+        self.trusted_static_dns_mapping.clear();
         self
     }
 
@@ -1439,6 +1552,11 @@ impl HttpAclBuilder {
                 .into_iter()
                 .map(|(k, v)| (k.into_boxed_str(), v))
                 .collect(),
+            trusted_static_dns_mapping: self
+                .trusted_static_dns_mapping
+                .into_iter()
+                .map(|(k, v)| (k.into_boxed_str(), v))
+                .collect(),
             validate_fn,
             allow_non_global_ip_ranges: self.allow_non_global_ip_ranges,
             method_acl_default: self.method_acl_default,
@@ -1610,7 +1728,23 @@ impl HttpAclBuilder {
                 "Static DNS mapping must be unique.".to_string(),
             ));
         }
-        for host in self.static_dns_mapping.keys() {
+        for (host, addr) in &self.static_dns_mapping {
+            if !utils::authority::is_valid_host(host) {
+                return Err(AddError::InvalidEntity(host.to_string()));
+            }
+            if self.trusted_static_dns_mapping.contains_key(host) {
+                return Err(AddError::AlreadyPresentTrustedStaticDnsMapping(
+                    host.to_string(),
+                    *addr,
+                ));
+            }
+        }
+        if !utils::has_unique_elements(&self.trusted_static_dns_mapping) {
+            return Err(AddError::NotUnique(
+                "Trusted static DNS mapping must be unique.".to_string(),
+            ));
+        }
+        for host in self.trusted_static_dns_mapping.keys() {
             if !utils::authority::is_valid_host(host) {
                 return Err(AddError::InvalidEntity(host.to_string()));
             }

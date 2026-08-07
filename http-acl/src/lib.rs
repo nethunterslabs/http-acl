@@ -262,6 +262,55 @@ mod tests {
     }
 
     #[test]
+    fn static_dns_mapping() {
+        let regular_addr = "10.0.0.1:80".parse().unwrap();
+        let trusted_addr = "10.0.0.2:80".parse().unwrap();
+
+        let acl = HttpAclBuilder::new()
+            .add_static_dns_mapping("regular.example.com".to_string(), regular_addr)
+            .unwrap()
+            .add_trusted_static_dns_mapping("trusted.example.com".to_string(), trusted_addr)
+            .unwrap()
+            .try_build()
+            .unwrap();
+
+        assert_eq!(
+            acl.resolve_static_dns_mapping("regular.example.com"),
+            Some(regular_addr)
+        );
+        assert_eq!(
+            acl.resolve_trusted_static_dns_mapping("trusted.example.com"),
+            Some(trusted_addr)
+        );
+        // The two maps are looked up independently - a host in one isn't found in the other.
+        assert_eq!(
+            acl.resolve_trusted_static_dns_mapping("regular.example.com"),
+            None
+        );
+        assert_eq!(acl.resolve_static_dns_mapping("trusted.example.com"), None);
+
+        // A regular mapping's resolved address is still subject to the IP/port ACL
+        // (denied here because no IP ranges are allowed by default).
+        assert!(acl.is_ip_allowed(&regular_addr.ip()).is_denied());
+
+        // A host can't be present in both maps.
+        assert!(
+            HttpAclBuilder::new()
+                .add_static_dns_mapping("both.example.com".to_string(), regular_addr)
+                .unwrap()
+                .add_trusted_static_dns_mapping("both.example.com".to_string(), trusted_addr)
+                .is_err()
+        );
+        assert!(
+            HttpAclBuilder::new()
+                .add_trusted_static_dns_mapping("both.example.com".to_string(), trusted_addr)
+                .unwrap()
+                .add_static_dns_mapping("both.example.com".to_string(), regular_addr)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn valid_acl() {
         let acl = HttpAclBuilder::new()
             .try_build_full(Some(Arc::new(|scheme, authority, headers, body| {
