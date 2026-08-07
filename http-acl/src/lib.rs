@@ -90,6 +90,22 @@ mod tests {
     }
 
     #[test]
+    fn denied_port_ranges_setter_rejects_overlaps() {
+        // Overlaps (but doesn't exactly equal) the default allowed range `80..=80`.
+        assert!(
+            HttpAclBuilder::new()
+                .denied_port_ranges(vec![70..=85])
+                .is_err()
+        );
+
+        // Overlaps within the new list itself.
+        assert!(
+            HttpAclBuilder::new()
+                .denied_port_ranges(vec![1000..=2000, 1500..=2500])
+                .is_err()
+        );
+    }
+    #[test]
     fn ip_acl() {
         let acl = HttpAclBuilder::new()
             .clear_allowed_ip_ranges()

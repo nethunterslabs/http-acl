@@ -895,9 +895,13 @@ impl HttpAclBuilder {
         mut self,
         port_ranges: Vec<RangeInclusive<u16>>,
     ) -> Result<Self, AddError> {
-        for port_range in &port_ranges {
+        for (i, port_range) in port_ranges.iter().enumerate() {
             if self.allowed_port_ranges.contains(port_range) {
                 return Err(AddError::AlreadyAllowedPortRange(port_range.clone()));
+            } else if utils::range_overlaps(&port_ranges, port_range, Some(i))
+                || utils::range_overlaps(&self.allowed_port_ranges, port_range, None)
+            {
+                return Err(AddError::Overlaps(format!("{port_range:?}")));
             }
         }
         self.denied_port_ranges = port_ranges;
